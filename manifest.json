@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Poly Dub",
   "description": "Create and copy a tagged Dub short link from any Polymarket page.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "action": {
     "default_title": "Create Dub link"
   },
