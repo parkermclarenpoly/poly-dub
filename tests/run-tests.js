@@ -117,7 +117,13 @@ async function testPickerTagOverride() {
 function testManifestScope() {
   const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.deepEqual(manifest.permissions.sort(), ["activeTab", "contextMenus", "scripting", "storage"]);
+  assert.deepEqual(manifest.permissions.sort(), [
+    "activeTab",
+    "clipboardWrite",
+    "contextMenus",
+    "scripting",
+    "storage",
+  ]);
   assert.equal(manifest.host_permissions.length, 3);
   assert.ok(manifest.host_permissions.every((value) => (
     value.includes("dub.co") || value.includes("polymarket.com")
