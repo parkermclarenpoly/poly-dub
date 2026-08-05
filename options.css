@@ -84,16 +84,20 @@ main {
   box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
 }
 
-.field + .field {
-  margin-top: 22px;
-}
-
-label {
+label,
+legend {
   display: block;
   margin-bottom: 7px;
   color: #344054;
   font-size: 13px;
   font-weight: 700;
+}
+
+.tag-fieldset {
+  min-width: 0;
+  margin: 24px 0 0;
+  padding: 0;
+  border: 0;
 }
 
 input,
@@ -122,6 +126,96 @@ input:focus {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 64px;
   gap: 8px;
+}
+
+.add-tag-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 8px;
+}
+
+.tag-list {
+  margin-top: 10px;
+  border-top: 1px solid #e4e7ec;
+}
+
+.tag-row {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #e4e7ec;
+}
+
+.tag-choice {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.tag-choice input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  accent-color: var(--blue);
+}
+
+.tag-choice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.remove-tag {
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #b42318;
+  font-size: 12px;
+}
+
+.empty-tags {
+  padding: 16px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mode-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 22px 0 0;
+  cursor: pointer;
+}
+
+.mode-toggle input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin-top: 1px;
+  accent-color: var(--blue);
+}
+
+.mode-toggle span,
+.mode-toggle strong,
+.mode-toggle small {
+  display: block;
+}
+
+.mode-toggle small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.mode-toggle:has(input:disabled) {
+  cursor: default;
+  opacity: 0.55;
 }
 
 button {
@@ -182,6 +276,10 @@ button {
 
   .settings-panel {
     padding: 20px;
+  }
+
+  .add-tag-row {
+    grid-template-columns: minmax(0, 1fr) 88px;
   }
 
   .actions {

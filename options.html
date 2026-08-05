@@ -28,10 +28,22 @@
           </div>
         </div>
 
-        <div class="field">
-          <label for="dubTagName">Link tag</label>
-          <input id="dubTagName" name="dubTagName" type="text" autocomplete="off" spellcheck="false" placeholder="@Polymarket" required>
-        </div>
+        <fieldset class="tag-fieldset">
+          <legend>Saved link tags</legend>
+          <div class="add-tag-row">
+            <input id="newTag" type="text" autocomplete="off" spellcheck="false" placeholder="@Polymarket">
+            <button id="addTag" class="secondary-button" type="button">Add tag</button>
+          </div>
+          <div id="tagList" class="tag-list"></div>
+        </fieldset>
+
+        <label class="mode-toggle" for="askEachTime">
+          <input id="askEachTime" type="checkbox">
+          <span>
+            <strong>Ask me which tag each time</strong>
+            <small>Otherwise the default tag is used immediately.</small>
+          </span>
+        </label>
 
         <div class="actions">
           <button class="primary-button" type="submit">Save settings</button>

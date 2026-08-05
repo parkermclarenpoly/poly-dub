@@ -4,15 +4,11 @@
   <img src="icons/poly-dub-logo.png" alt="Poly Dub" width="180">
 </p>
 
-<p align="center">
-  <a href="https://github.com/parkermclarenpoly/poly-dub/releases/latest/download/poly-dub.zip"><strong>Download Poly Dub</strong></a>
-</p>
-
 Poly Dub is a single-purpose Chrome extension for creating and copying a tagged Dub short link from any Polymarket page.
 
 ## Install
 
-1. Download the latest release ZIP and extract it.
+1. [**Download the latest release ZIP**](https://github.com/parkermclarenpoly/poly-dub/releases/latest/download/poly-dub.zip) and extract it.
 2. Open `chrome://extensions` in Chrome.
 3. Enable **Developer mode**.
 4. Select **Load unpacked** and choose the extracted `poly-dub` folder.
@@ -20,7 +16,9 @@ Poly Dub is a single-purpose Chrome extension for creating and copying a tagged 
 
 ## Configure
 
-The settings page opens after installation. Enter your Dub API key and the exact Dub tag to apply to links, then select **Save settings**.
+The settings page opens after installation. Enter your Dub API key, add one or more exact Dub tags, choose the default tag, and select **Save settings**.
+
+By default, clicking Poly Dub immediately creates a link with the default tag. Enable **Ask me which tag each time** to show the saved-tag picker on every click. In default mode, alternate saved tags remain available from the extension icon's right-click menu.
 
 The API key and tag are stored only in the user's local Chrome extension storage. They are not included in this repository.
 
