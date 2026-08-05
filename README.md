@@ -4,6 +4,10 @@
   <img src="icons/poly-dub-logo.png" alt="Poly Dub" width="180">
 </p>
 
+<p align="center">
+  <a href="https://github.com/parkermclarenpoly/poly-dub/releases/latest/download/poly-dub.zip"><strong>Download Poly Dub</strong></a>
+</p>
+
 Poly Dub is a single-purpose Chrome extension for creating and copying a tagged Dub short link from any Polymarket page.
 
 ## Install
