@@ -20,6 +20,18 @@
 
     <main>
       <form id="settingsForm" class="settings-panel">
+        <section class="access-section" aria-labelledby="accessHeading">
+          <div class="section-heading">
+            <div>
+              <h2 id="accessHeading">Team access</h2>
+              <p>Enter the shared Polymarket password once on this browser.</p>
+            </div>
+            <span class="access-state" id="accessState">Locked</span>
+          </div>
+          <label for="teamPassword">Team password</label>
+          <input id="teamPassword" type="password" autocomplete="current-password" placeholder="Enter team password">
+        </section>
+
         <fieldset class="tag-fieldset">
           <legend>Saved link tags</legend>
           <div class="add-tag-row">
@@ -38,7 +50,7 @@
         </label>
 
         <div class="actions">
-          <button class="primary-button" type="submit">Save settings</button>
+          <button class="primary-button" type="submit">Save and continue</button>
         </div>
         <p id="formStatus" class="form-status" aria-live="polite"></p>
       </form>

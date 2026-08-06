@@ -5,6 +5,9 @@ const tagList = document.getElementById("tagList");
 const askEachTimeInput = document.getElementById("askEachTime");
 const formStatus = document.getElementById("formStatus");
 const connectionStatus = document.getElementById("connectionStatus");
+const teamPasswordInput = document.getElementById("teamPassword");
+const accessState = document.getElementById("accessState");
+const LOGIN_URL = "https://poly-dub-api.vercel.app/api/login";
 
 let tags = [];
 let defaultTag = "";
@@ -18,14 +21,46 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  await chrome.storage.local.set({
-    defaultTag,
-    dubTags: tags,
-    tagSelectionMode: askEachTimeInput.checked && tags.length > 1 ? "ask" : "default",
-  });
-  await chrome.storage.local.remove(["accessToken", "dubApiKey", "dubTagName"]);
-  setStatus("Settings saved locally.", true);
-  updateConnectionStatus(true);
+  setFormBusy(true);
+  try {
+    let { sessionExpiresAt = 0, sessionToken = "" } = await chrome.storage.local.get({
+      sessionExpiresAt: 0,
+      sessionToken: "",
+    });
+    if (!sessionToken || Number(sessionExpiresAt) <= Date.now()) {
+      const password = teamPasswordInput.value;
+      if (!password) throw new Error("Enter the team password.");
+      const response = await fetch(LOGIN_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.accessToken) {
+        throw new Error(data.error || "Could not unlock Poly Dub");
+      }
+      sessionToken = data.accessToken;
+      sessionExpiresAt = Date.now() + (Number(data.expiresIn) || 0) * 1000;
+    }
+
+    await chrome.storage.local.set({
+      defaultTag,
+      dubTags: tags,
+      sessionExpiresAt,
+      sessionToken,
+      tagSelectionMode: askEachTimeInput.checked && tags.length > 1 ? "ask" : "default",
+    });
+    await chrome.storage.local.remove(["accessToken", "dubApiKey", "dubTagName"]);
+    teamPasswordInput.value = "";
+    setStatus("Poly Dub is ready.", true);
+    updateConnectionStatus(true);
+    updateAccessState(true);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Could not save settings");
+    updateConnectionStatus(false);
+  } finally {
+    setFormBusy(false);
+  }
 });
 
 addTagButton.addEventListener("click", addTag);
@@ -41,6 +76,8 @@ async function loadSettings() {
     dubTagName: "",
     dubTags: [],
     tagSelectionMode: "default",
+    sessionExpiresAt: 0,
+    sessionToken: "",
   });
   const legacyTag = String(settings.dubTagName || "").trim();
   tags = Array.isArray(settings.dubTags)
@@ -51,7 +88,9 @@ async function loadSettings() {
 
   askEachTimeInput.checked = settings.tagSelectionMode === "ask" && tags.length > 1;
   renderTags();
-  updateConnectionStatus(Boolean(defaultTag));
+  const unlocked = Boolean(settings.sessionToken) && Number(settings.sessionExpiresAt) > Date.now();
+  updateConnectionStatus(unlocked && Boolean(defaultTag));
+  updateAccessState(unlocked);
 }
 
 function addTag() {
@@ -122,4 +161,18 @@ function setStatus(message, success = false) {
 
 function updateConnectionStatus(configured) {
   connectionStatus.textContent = configured ? "Ready" : "Not configured";
+}
+
+function updateAccessState(unlocked) {
+  accessState.textContent = unlocked ? "Unlocked" : "Locked";
+  accessState.classList.toggle("unlocked", unlocked);
+  teamPasswordInput.hidden = unlocked;
+  const label = document.querySelector('label[for="teamPassword"]');
+  label.hidden = unlocked;
+}
+
+function setFormBusy(busy) {
+  const submitButton = form.querySelector('button[type="submit"]');
+  submitButton.disabled = busy;
+  submitButton.textContent = busy ? "Saving..." : "Save and continue";
 }

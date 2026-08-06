@@ -16,15 +16,16 @@ https://github.com/user-attachments/assets/38a341bf-2963-4b27-a5fe-ed024de68544
 2. Open `chrome://extensions` in Chrome.
 3. Enable **Developer mode**.
 4. Select **Load unpacked** and choose the extracted `poly-dub` folder.
-5. Pin **Poly Dub** to the Chrome toolbar.
+5. When settings opens, enter the shared Polymarket team password, add your Dub tag, and select **Save and continue**.
+6. Pin **Poly Dub** to the Chrome toolbar.
 
 ## Configure
 
-The settings page opens after installation. Add one or more exact Dub tags, choose the default tag, and select **Save settings**. No API key or access token setup is required.
+The settings page opens after installation. Enter the shared Polymarket team password, add one or more exact Dub tags, choose the default tag, and select **Save and continue**. No API key is required. The password is entered only once per browser and is never stored by the extension.
 
 By default, clicking Poly Dub immediately creates a link with the default tag. Enable **Ask me which tag each time** to show the saved-tag picker on every click. In default mode, alternate saved tags remain available from the extension icon's right-click menu.
 
-Tags are stored only in the user's local Chrome extension storage. The Dub API key remains on the Poly Dub server and is never included in the extension or this repository.
+Tags and a temporary team session are stored only in the user's local Chrome extension storage. The Dub API key and team-password verifier remain on the Poly Dub server and are never included in the extension or this repository.
 
 To change settings later, right-click the extension icon and select **Options**.
 
@@ -41,4 +42,4 @@ Open any page on `polymarket.com` and click the Poly Dub toolbar icon. The exten
 
 ## Server security
 
-The private release package contains a shared credential that can call only the Poly Dub proxy; it cannot access Dub directly. The proxy accepts authenticated `POST` requests only, restricts destination URLs to HTTPS pages on `polymarket.com`, strips the `via` parameter, rate-limits the team credential, and stores only its SHA-256 hash. The real `DUB_API_KEY` remains a sensitive production environment variable and must never be committed to the repository or bundled with the extension.
+The release package contains no credentials. The server verifies the shared team password and returns a signed, expiring session used only with the Poly Dub proxy. Login attempts and link creation are rate-limited. The proxy restricts destinations to HTTPS pages on `polymarket.com` and strips the `via` parameter. The real `DUB_API_KEY`, password hash, and signing secret remain production environment variables and are never committed or bundled with the extension.

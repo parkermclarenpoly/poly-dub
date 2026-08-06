@@ -1,4 +1,4 @@
-const crypto = require("node:crypto");
+const { verifySessionToken } = require("./auth.js");
 
 const MAX_REQUESTS_PER_MINUTE = 60;
 const POLYMARKET_HOST_PATTERN = /^(?:[a-z0-9-]+\.)*polymarket\.com$/i;
@@ -17,12 +17,11 @@ function createHandler({ fetchImpl = globalThis.fetch } = {}) {
       return;
     }
 
-    const actor = authenticate(request.headers.authorization, process.env.POLY_DUB_ACCESS_TOKENS);
-    if (!actor) {
-      sendJson(response, 401, { error: "Invalid or expired Poly Dub access token" });
+    if (!verifySessionToken(request.headers.authorization, process.env.POLY_DUB_SESSION_SECRET)) {
+      sendJson(response, 401, { error: "Team access expired. Open Poly Dub settings and sign in again." });
       return;
     }
-    if (!consumeRateLimit(actor)) {
+    if (!consumeRateLimit("polymarket-team")) {
       sendJson(response, 429, { error: "Too many links created. Wait a minute and try again." });
       return;
     }
@@ -64,7 +63,7 @@ function createHandler({ fetchImpl = globalThis.fetch } = {}) {
       }
 
       console.log(JSON.stringify({
-        actor,
+        actor: "polymarket-team",
         event: "link.created",
         host: new URL(input.url).hostname,
         tag: input.tagName,
@@ -75,29 +74,6 @@ function createHandler({ fetchImpl = globalThis.fetch } = {}) {
       sendJson(response, 502, { error: "Could not reach Dub" });
     }
   };
-}
-
-function authenticate(header, encodedRecords) {
-  const token = String(header || "").replace(/^Bearer\s+/i, "").trim();
-  if (!token || token.length > 256) return "";
-
-  let records;
-  try {
-    records = JSON.parse(encodedRecords || "[]");
-  } catch {
-    return "";
-  }
-  if (!Array.isArray(records)) return "";
-
-  const presentedHash = hashAccessToken(token);
-  for (const record of records) {
-    const expectedHash = String(record?.hash || "");
-    if (!/^[a-f0-9]{64}$/i.test(expectedHash)) continue;
-    if (crypto.timingSafeEqual(Buffer.from(presentedHash, "hex"), Buffer.from(expectedHash, "hex"))) {
-      return String(record.id || "team-member").slice(0, 80);
-    }
-  }
-  return "";
 }
 
 function validateInput(body) {
@@ -131,10 +107,6 @@ function consumeRateLimit(actor) {
   return true;
 }
 
-function hashAccessToken(token) {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
 function getDubErrorMessage(data) {
   if (typeof data?.error === "string") return data.error;
   if (typeof data?.error?.message === "string") return data.error.message;
@@ -158,5 +130,4 @@ function sendJson(response, status, body) {
 const handler = createHandler();
 module.exports = handler;
 module.exports.createHandler = createHandler;
-module.exports.hashAccessToken = hashAccessToken;
 module.exports.config = { api: { bodyParser: { sizeLimit: "16kb" } } };

@@ -1,6 +1,5 @@
 const POLYMARKET_URL_PATTERN = /^https?:\/\/([^/]+\.)?polymarket\.com(?:\/|$)/i;
 const POLY_DUB_API_URL = "https://poly-dub-api.vercel.app/api/create-link";
-const POLY_DUB_ACCESS_TOKEN = "__POLY_DUB_ACCESS_TOKEN__";
 const TAG_MENU_PREFIX = "poly-dub-tag:";
 const TAG_PICKER_PATH = "popup.html";
 const STORAGE_DEFAULTS = {
@@ -9,6 +8,8 @@ const STORAGE_DEFAULTS = {
   dubTagName: "",
   dubTags: [],
   tagSelectionMode: "default",
+  sessionExpiresAt: 0,
+  sessionToken: "",
 };
 
 chrome.runtime.onInstalled.addListener(({ reason }) => {
@@ -98,6 +99,12 @@ async function runLinkAction(tab, requestedTag = "") {
     await chrome.runtime.openOptionsPage();
     return;
   }
+  if (!settings.sessionToken || settings.sessionExpiresAt <= Date.now()) {
+    await chrome.storage.local.remove(["sessionExpiresAt", "sessionToken"]);
+    await showBadge("LOGIN", "#175cd3");
+    await chrome.runtime.openOptionsPage();
+    return;
+  }
   if (!settings.dubTags.includes(tagName)) {
     throw new Error("That tag is no longer saved. Reopen Poly Dub settings.");
   }
@@ -115,7 +122,7 @@ async function runLinkAction(tab, requestedTag = "") {
   const response = await fetch(POLY_DUB_API_URL, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${POLY_DUB_ACCESS_TOKEN}`,
+      authorization: `Bearer ${settings.sessionToken}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({
@@ -127,6 +134,10 @@ async function runLinkAction(tab, requestedTag = "") {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 401) {
+      await chrome.storage.local.remove(["sessionExpiresAt", "sessionToken"]);
+      await chrome.runtime.openOptionsPage();
+    }
     throw new Error(getApiErrorMessage(data) || `Poly Dub returned HTTP ${response.status}`);
   }
   if (!data.shortLink) throw new Error("Dub did not return a short link");
@@ -153,6 +164,8 @@ function normalizeSettings(raw) {
     defaultTag,
     dubTags,
     tagSelectionMode: raw.tagSelectionMode === "ask" ? "ask" : "default",
+    sessionExpiresAt: Number(raw.sessionExpiresAt) || 0,
+    sessionToken: String(raw.sessionToken || ""),
   };
 }
 
