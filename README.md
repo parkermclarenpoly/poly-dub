@@ -9,13 +9,11 @@ Poly Dub is a single-purpose Chrome extension for creating and copying a tagged 
 ## Demo
 
 <p align="center">
-  <a href="media/poly-dub-install-demo.mp4">
-    <img src="media/poly-dub-install-demo.jpg" alt="Watch the Poly Dub installation demo" width="900">
-  </a>
+  <img src="media/poly-dub-install-demo.gif" alt="Poly Dub installation demo" width="900">
 </p>
 
 <p align="center">
-  <strong><a href="media/poly-dub-install-demo.mp4">Watch the 38-second installation demo</a></strong>
+  <strong><a href="media/poly-dub-install-demo.mp4?raw=1">Open the full-quality 38-second video</a></strong>
 </p>
 
 ## Install
