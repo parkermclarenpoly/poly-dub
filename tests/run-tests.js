@@ -215,6 +215,14 @@ function testManifestScope() {
   ]);
 }
 
+function testNoCredentialSetupUi() {
+  const optionsHtml = fs.readFileSync("options.html", "utf8");
+  const background = fs.readFileSync("background.js", "utf8");
+  assert.equal(optionsHtml.includes("accessToken"), false);
+  assert.equal(optionsHtml.includes("Dub API key"), false);
+  assert.equal(background.includes("__POLY_DUB_ACCESS_TOKEN__"), true);
+}
+
 Promise.resolve()
   .then(testDefaultTagFlow)
   .then(testPickerMode)
@@ -223,6 +231,7 @@ Promise.resolve()
   .then(testProxyFlow)
   .then(testProxyRejectsUnauthorizedAndExternalUrls)
   .then(testManifestScope)
+  .then(testNoCredentialSetupUi)
   .then(() => console.log("Poly Dub tests passed"))
   .catch((error) => {
     console.error(error);

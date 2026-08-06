@@ -1,11 +1,8 @@
 const form = document.getElementById("settingsForm");
-const accessTokenInput = document.getElementById("accessToken");
 const newTagInput = document.getElementById("newTag");
 const addTagButton = document.getElementById("addTag");
 const tagList = document.getElementById("tagList");
 const askEachTimeInput = document.getElementById("askEachTime");
-const toggleKeyButton = document.getElementById("toggleKey");
-const clearKeyButton = document.getElementById("clearKey");
 const formStatus = document.getElementById("formStatus");
 const connectionStatus = document.getElementById("connectionStatus");
 
@@ -16,19 +13,17 @@ loadSettings();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const accessToken = accessTokenInput.value.trim();
-  if (!accessToken || tags.length === 0 || !defaultTag) {
-    setStatus("Enter an access token and save at least one tag.");
+  if (tags.length === 0 || !defaultTag) {
+    setStatus("Save at least one tag.");
     return;
   }
 
   await chrome.storage.local.set({
-    accessToken,
     defaultTag,
     dubTags: tags,
     tagSelectionMode: askEachTimeInput.checked && tags.length > 1 ? "ask" : "default",
   });
-  await chrome.storage.local.remove(["dubApiKey", "dubTagName"]);
+  await chrome.storage.local.remove(["accessToken", "dubApiKey", "dubTagName"]);
   setStatus("Settings saved locally.", true);
   updateConnectionStatus(true);
 });
@@ -40,25 +35,8 @@ newTagInput.addEventListener("keydown", (event) => {
   addTag();
 });
 
-toggleKeyButton.addEventListener("click", () => {
-  const revealing = accessTokenInput.type === "password";
-  accessTokenInput.type = revealing ? "text" : "password";
-  toggleKeyButton.textContent = revealing ? "Hide" : "Show";
-  toggleKeyButton.setAttribute("aria-label", revealing ? "Hide access token" : "Show access token");
-  toggleKeyButton.title = revealing ? "Hide access token" : "Show access token";
-});
-
-clearKeyButton.addEventListener("click", async () => {
-  await chrome.storage.local.remove("accessToken");
-  accessTokenInput.value = "";
-  accessTokenInput.focus();
-  setStatus("Access token cleared.");
-  updateConnectionStatus(false);
-});
-
 async function loadSettings() {
   const settings = await chrome.storage.local.get({
-    accessToken: "",
     defaultTag: "",
     dubTagName: "",
     dubTags: [],
@@ -71,10 +49,9 @@ async function loadSettings() {
   if (legacyTag && !tags.includes(legacyTag)) tags.push(legacyTag);
   defaultTag = tags.includes(settings.defaultTag) ? settings.defaultTag : (legacyTag || tags[0] || "");
 
-  accessTokenInput.value = settings.accessToken || "";
   askEachTimeInput.checked = settings.tagSelectionMode === "ask" && tags.length > 1;
   renderTags();
-  updateConnectionStatus(Boolean(settings.accessToken && defaultTag));
+  updateConnectionStatus(Boolean(defaultTag));
 }
 
 function addTag() {

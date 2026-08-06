@@ -20,14 +20,6 @@
 
     <main>
       <form id="settingsForm" class="settings-panel">
-        <div class="field">
-          <label for="accessToken">Poly Dub access token</label>
-          <div class="password-field">
-            <input id="accessToken" name="accessToken" type="password" autocomplete="off" spellcheck="false" required>
-            <button id="toggleKey" class="icon-button" type="button" aria-label="Show access token" title="Show access token">Show</button>
-          </div>
-        </div>
-
         <fieldset class="tag-fieldset">
           <legend>Saved link tags</legend>
           <div class="add-tag-row">
@@ -47,7 +39,6 @@
 
         <div class="actions">
           <button class="primary-button" type="submit">Save settings</button>
-          <button id="clearKey" class="secondary-button" type="button">Clear token</button>
         </div>
         <p id="formStatus" class="form-status" aria-live="polite"></p>
       </form>

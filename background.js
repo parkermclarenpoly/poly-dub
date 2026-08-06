@@ -1,10 +1,10 @@
 const POLYMARKET_URL_PATTERN = /^https?:\/\/([^/]+\.)?polymarket\.com(?:\/|$)/i;
 const POLY_DUB_API_URL = "https://poly-dub-api.vercel.app/api/create-link";
+const POLY_DUB_ACCESS_TOKEN = "__POLY_DUB_ACCESS_TOKEN__";
 const TAG_MENU_PREFIX = "poly-dub-tag:";
 const TAG_PICKER_PATH = "popup.html";
 const STORAGE_DEFAULTS = {
   defaultTag: "",
-  accessToken: "",
   dubApiKey: "",
   dubTagName: "",
   dubTags: [],
@@ -63,7 +63,7 @@ async function migrateLegacySettings() {
     dubTags: settings.dubTags,
     tagSelectionMode: settings.tagSelectionMode,
   });
-  await chrome.storage.local.remove(["dubApiKey", "dubTagName"]);
+  await chrome.storage.local.remove(["accessToken", "dubApiKey", "dubTagName"]);
 }
 
 async function syncExtensionUi() {
@@ -91,10 +91,9 @@ async function runLinkAction(tab, requestedTag = "") {
   }
 
   const settings = normalizeSettings(await chrome.storage.local.get(STORAGE_DEFAULTS));
-  const token = settings.accessToken;
   const tagName = String(requestedTag || settings.defaultTag).trim();
 
-  if (!token || !tagName) {
+  if (!tagName) {
     await showBadge("SET", "#175cd3");
     await chrome.runtime.openOptionsPage();
     return;
@@ -116,7 +115,7 @@ async function runLinkAction(tab, requestedTag = "") {
   const response = await fetch(POLY_DUB_API_URL, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${token}`,
+      authorization: `Bearer ${POLY_DUB_ACCESS_TOKEN}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({
@@ -152,7 +151,6 @@ function normalizeSettings(raw) {
   const defaultTag = dubTags.includes(requestedDefault) ? requestedDefault : (dubTags[0] || "");
   return {
     defaultTag,
-    accessToken: String(raw.accessToken || "").trim(),
     dubTags,
     tagSelectionMode: raw.tagSelectionMode === "ask" ? "ask" : "default",
   };
