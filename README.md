@@ -6,6 +6,18 @@
 
 Poly Dub is a single-purpose Chrome extension for creating and copying a tagged Dub short link from any Polymarket page.
 
+## Demo
+
+<p align="center">
+  <a href="media/poly-dub-install-demo.mp4">
+    <img src="media/poly-dub-install-demo.jpg" alt="Watch the Poly Dub installation demo" width="900">
+  </a>
+</p>
+
+<p align="center">
+  <strong><a href="media/poly-dub-install-demo.mp4">Watch the 38-second installation demo</a></strong>
+</p>
+
 ## Install
 
 1. [**Download the latest release ZIP**](https://github.com/parkermclarenpoly/poly-dub/releases/latest/download/poly-dub.zip) and extract it.
