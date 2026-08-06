@@ -1,8 +1,10 @@
 const POLYMARKET_URL_PATTERN = /^https?:\/\/([^/]+\.)?polymarket\.com(?:\/|$)/i;
+const POLY_DUB_API_URL = "https://poly-dub-api.vercel.app/api/create-link";
 const TAG_MENU_PREFIX = "poly-dub-tag:";
 const TAG_PICKER_PATH = "popup.html";
 const STORAGE_DEFAULTS = {
   defaultTag: "",
+  accessToken: "",
   dubApiKey: "",
   dubTagName: "",
   dubTags: [],
@@ -61,7 +63,7 @@ async function migrateLegacySettings() {
     dubTags: settings.dubTags,
     tagSelectionMode: settings.tagSelectionMode,
   });
-  if (raw.dubTagName) await chrome.storage.local.remove("dubTagName");
+  await chrome.storage.local.remove(["dubApiKey", "dubTagName"]);
 }
 
 async function syncExtensionUi() {
@@ -89,7 +91,7 @@ async function runLinkAction(tab, requestedTag = "") {
   }
 
   const settings = normalizeSettings(await chrome.storage.local.get(STORAGE_DEFAULTS));
-  const token = settings.dubApiKey;
+  const token = settings.accessToken;
   const tagName = String(requestedTag || settings.defaultTag).trim();
 
   if (!token || !tagName) {
@@ -111,14 +113,14 @@ async function runLinkAction(tab, requestedTag = "") {
     throw new Error(page?.error || "Could not read the Polymarket page");
   }
 
-  const response = await fetch("https://api.dub.co/links", {
+  const response = await fetch(POLY_DUB_API_URL, {
     method: "POST",
     headers: {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      tagNames: tagName,
+      tagName,
       title: page.title ? String(page.title).slice(0, 190) : undefined,
       url: page.url,
     }),
@@ -126,7 +128,7 @@ async function runLinkAction(tab, requestedTag = "") {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(getDubErrorMessage(data) || `Dub returned HTTP ${response.status}`);
+    throw new Error(getApiErrorMessage(data) || `Poly Dub returned HTTP ${response.status}`);
   }
   if (!data.shortLink) throw new Error("Dub did not return a short link");
 
@@ -150,13 +152,13 @@ function normalizeSettings(raw) {
   const defaultTag = dubTags.includes(requestedDefault) ? requestedDefault : (dubTags[0] || "");
   return {
     defaultTag,
-    dubApiKey: String(raw.dubApiKey || "").trim(),
+    accessToken: String(raw.accessToken || "").trim(),
     dubTags,
     tagSelectionMode: raw.tagSelectionMode === "ask" ? "ask" : "default",
   };
 }
 
-function getDubErrorMessage(data) {
+function getApiErrorMessage(data) {
   if (typeof data?.error === "string") return data.error;
   if (typeof data?.error?.message === "string") return data.error.message;
   if (typeof data?.message === "string") return data.message;

@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
+const { createHandler, hashAccessToken } = require("../api/create-link.js");
 
 function createBackgroundHarness(settingsOverrides = {}) {
   let actionHandler;
@@ -11,7 +12,7 @@ function createBackgroundHarness(settingsOverrides = {}) {
   const menuItems = [];
   const settings = {
     defaultTag: "@DefaultTag",
-    dubApiKey: "test-key",
+    accessToken: "test-access-token",
     dubTagName: "",
     dubTags: ["@DefaultTag", "@AlternateTag"],
     tagSelectionMode: "default",
@@ -82,7 +83,7 @@ function createBackgroundHarness(settingsOverrides = {}) {
 async function testDefaultTagFlow() {
   const harness = createBackgroundHarness();
   await harness.action({ id: 17, url: "https://polymarket.com/event/example" });
-  assert.equal(harness.getRequestBody().tagNames, "@DefaultTag");
+  assert.equal(harness.getRequestBody().tagName, "@DefaultTag");
   assert.equal(harness.getMessages().at(-1).shortLink, "https://poly.market/example");
 }
 
@@ -111,7 +112,90 @@ async function testPickerTagOverride() {
     }, {}, resolve);
   });
   assert.equal(response.ok, true);
-  assert.equal(harness.getRequestBody().tagNames, "@AlternateTag");
+  assert.equal(harness.getRequestBody().tagName, "@AlternateTag");
+}
+
+function createResponseHarness() {
+  const result = { body: null, headers: {}, status: 0 };
+  return {
+    response: {
+      end() {},
+      json(body) { result.body = body; return this; },
+      setHeader(name, value) { result.headers[name] = value; },
+      status(status) { result.status = status; return this; },
+    },
+    result,
+  };
+}
+
+async function testProxyFlow() {
+  const accessToken = "poly_test_access_token";
+  const originalAccessTokens = process.env.POLY_DUB_ACCESS_TOKENS;
+  const originalDubApiKey = process.env.DUB_API_KEY;
+  process.env.POLY_DUB_ACCESS_TOKENS = JSON.stringify([
+    { id: "test-user", hash: hashAccessToken(accessToken) },
+  ]);
+  process.env.DUB_API_KEY = "test-dub-key";
+
+  try {
+    let dubBody;
+    const handler = createHandler({
+      fetchImpl: async (_url, options) => {
+        dubBody = JSON.parse(options.body);
+        return { json: async () => ({ shortLink: "https://poly.market/test" }), ok: true };
+      },
+    });
+    const { response, result } = createResponseHarness();
+    await handler({
+      body: {
+        tagName: "@ExactTeamTag",
+        title: "Example market",
+        url: "https://polymarket.com/event/example?via=x-afr2&source=test",
+      },
+      headers: { authorization: `Bearer ${accessToken}` },
+      method: "POST",
+    }, response);
+
+    assert.equal(result.status, 200);
+    assert.equal(result.body.shortLink, "https://poly.market/test");
+    assert.equal(dubBody.tagNames, "@ExactTeamTag");
+    assert.equal(new URL(dubBody.url).searchParams.has("via"), false);
+    assert.equal(new URL(dubBody.url).searchParams.get("source"), "test");
+  } finally {
+    restoreEnvironment("POLY_DUB_ACCESS_TOKENS", originalAccessTokens);
+    restoreEnvironment("DUB_API_KEY", originalDubApiKey);
+  }
+}
+
+async function testProxyRejectsUnauthorizedAndExternalUrls() {
+  const accessToken = "poly_test_access_token";
+  const originalAccessTokens = process.env.POLY_DUB_ACCESS_TOKENS;
+  process.env.POLY_DUB_ACCESS_TOKENS = JSON.stringify([
+    { id: "test-user", hash: hashAccessToken(accessToken) },
+  ]);
+
+  try {
+    const handler = createHandler({ fetchImpl: async () => { throw new Error("Unexpected fetch"); } });
+    const unauthorized = createResponseHarness();
+    await handler({ body: {}, headers: { authorization: "Bearer wrong" }, method: "POST" }, unauthorized.response);
+    assert.equal(unauthorized.result.status, 401);
+
+    const external = createResponseHarness();
+    await handler({
+      body: { tagName: "@Tag", url: "https://example.com/not-allowed" },
+      headers: { authorization: `Bearer ${accessToken}` },
+      method: "POST",
+    }, external.response);
+    assert.equal(external.result.status, 400);
+    assert.equal(external.result.body.error, "Only Polymarket links are allowed");
+  } finally {
+    restoreEnvironment("POLY_DUB_ACCESS_TOKENS", originalAccessTokens);
+  }
+}
+
+function restoreEnvironment(name, value) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
 }
 
 function testManifestScope() {
@@ -124,10 +208,11 @@ function testManifestScope() {
     "scripting",
     "storage",
   ]);
-  assert.equal(manifest.host_permissions.length, 3);
-  assert.ok(manifest.host_permissions.every((value) => (
-    value.includes("dub.co") || value.includes("polymarket.com")
-  )));
+  assert.deepEqual(manifest.host_permissions.sort(), [
+    "https://*.polymarket.com/*",
+    "https://poly-dub-api.vercel.app/*",
+    "https://polymarket.com/*",
+  ]);
 }
 
 Promise.resolve()
@@ -135,6 +220,8 @@ Promise.resolve()
   .then(testPickerMode)
   .then(testDefaultModeAlternateMenus)
   .then(testPickerTagOverride)
+  .then(testProxyFlow)
+  .then(testProxyRejectsUnauthorizedAndExternalUrls)
   .then(testManifestScope)
   .then(() => console.log("Poly Dub tests passed"))
   .catch((error) => {

@@ -1,5 +1,5 @@
 const form = document.getElementById("settingsForm");
-const apiKeyInput = document.getElementById("dubApiKey");
+const accessTokenInput = document.getElementById("accessToken");
 const newTagInput = document.getElementById("newTag");
 const addTagButton = document.getElementById("addTag");
 const tagList = document.getElementById("tagList");
@@ -16,19 +16,19 @@ loadSettings();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const dubApiKey = apiKeyInput.value.trim();
-  if (!dubApiKey || tags.length === 0 || !defaultTag) {
-    setStatus("Enter an API key and save at least one tag.");
+  const accessToken = accessTokenInput.value.trim();
+  if (!accessToken || tags.length === 0 || !defaultTag) {
+    setStatus("Enter an access token and save at least one tag.");
     return;
   }
 
   await chrome.storage.local.set({
+    accessToken,
     defaultTag,
-    dubApiKey,
     dubTags: tags,
     tagSelectionMode: askEachTimeInput.checked && tags.length > 1 ? "ask" : "default",
   });
-  await chrome.storage.local.remove("dubTagName");
+  await chrome.storage.local.remove(["dubApiKey", "dubTagName"]);
   setStatus("Settings saved locally.", true);
   updateConnectionStatus(true);
 });
@@ -41,25 +41,25 @@ newTagInput.addEventListener("keydown", (event) => {
 });
 
 toggleKeyButton.addEventListener("click", () => {
-  const revealing = apiKeyInput.type === "password";
-  apiKeyInput.type = revealing ? "text" : "password";
+  const revealing = accessTokenInput.type === "password";
+  accessTokenInput.type = revealing ? "text" : "password";
   toggleKeyButton.textContent = revealing ? "Hide" : "Show";
-  toggleKeyButton.setAttribute("aria-label", revealing ? "Hide API key" : "Show API key");
-  toggleKeyButton.title = revealing ? "Hide API key" : "Show API key";
+  toggleKeyButton.setAttribute("aria-label", revealing ? "Hide access token" : "Show access token");
+  toggleKeyButton.title = revealing ? "Hide access token" : "Show access token";
 });
 
 clearKeyButton.addEventListener("click", async () => {
-  await chrome.storage.local.remove("dubApiKey");
-  apiKeyInput.value = "";
-  apiKeyInput.focus();
-  setStatus("API key cleared.");
+  await chrome.storage.local.remove("accessToken");
+  accessTokenInput.value = "";
+  accessTokenInput.focus();
+  setStatus("Access token cleared.");
   updateConnectionStatus(false);
 });
 
 async function loadSettings() {
   const settings = await chrome.storage.local.get({
+    accessToken: "",
     defaultTag: "",
-    dubApiKey: "",
     dubTagName: "",
     dubTags: [],
     tagSelectionMode: "default",
@@ -71,10 +71,10 @@ async function loadSettings() {
   if (legacyTag && !tags.includes(legacyTag)) tags.push(legacyTag);
   defaultTag = tags.includes(settings.defaultTag) ? settings.defaultTag : (legacyTag || tags[0] || "");
 
-  apiKeyInput.value = settings.dubApiKey || "";
+  accessTokenInput.value = settings.accessToken || "";
   askEachTimeInput.checked = settings.tagSelectionMode === "ask" && tags.length > 1;
   renderTags();
-  updateConnectionStatus(Boolean(settings.dubApiKey && defaultTag));
+  updateConnectionStatus(Boolean(settings.accessToken && defaultTag));
 }
 
 function addTag() {
