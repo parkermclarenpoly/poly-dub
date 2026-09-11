@@ -1,10 +1,11 @@
 const { verifySessionToken } = require("./auth.js");
+const { buildOgPreview } = require("./og-preview.js");
 
 const MAX_REQUESTS_PER_MINUTE = 60;
 const POLYMARKET_HOST_PATTERN = /^(?:[a-z0-9-]+\.)*polymarket\.com$/i;
 const requestWindows = new Map();
 
-function createHandler({ fetchImpl = globalThis.fetch } = {}) {
+function createHandler({ fetchImpl = globalThis.fetch, ogPreviewOptions = {} } = {}) {
   return async function handler(request, response) {
     setResponseHeaders(response);
 
@@ -39,17 +40,27 @@ function createHandler({ fetchImpl = globalThis.fetch } = {}) {
     }
 
     try {
+      // Big event pages break X's crawler; see api/og-preview.js.
+      const ogPreview = await buildOgPreview(input.url, { fetchImpl, ...ogPreviewOptions });
+      const dubBody = {
+        tagNames: input.tagName,
+        title: input.title || undefined,
+        url: input.url,
+      };
+      if (ogPreview) {
+        dubBody.proxy = true;
+        dubBody.image = ogPreview.image;
+        dubBody.title = input.title || "Polymarket";
+        dubBody.description = input.description || "Live odds on Polymarket, the world's largest prediction market.";
+      }
+
       const dubResponse = await fetchImpl("https://api.dub.co/links", {
         method: "POST",
         headers: {
           authorization: `Bearer ${dubApiKey}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          tagNames: input.tagName,
-          title: input.title || undefined,
-          url: input.url,
-        }),
+        body: JSON.stringify(dubBody),
       });
       const data = await dubResponse.json().catch(() => ({}));
       if (!dubResponse.ok) {
@@ -66,9 +77,11 @@ function createHandler({ fetchImpl = globalThis.fetch } = {}) {
         actor: "polymarket-team",
         event: "link.created",
         host: new URL(input.url).hostname,
+        ogWorkaround: Boolean(ogPreview),
+        htmlBytes: ogPreview?.htmlBytes,
         tag: input.tagName,
       }));
-      sendJson(response, 200, { shortLink: data.shortLink });
+      sendJson(response, 200, { ogWorkaround: Boolean(ogPreview), shortLink: data.shortLink });
     } catch (error) {
       console.error("Poly Dub upstream request failed", error instanceof Error ? error.message : error);
       sendJson(response, 502, { error: "Could not reach Dub" });
@@ -78,7 +91,8 @@ function createHandler({ fetchImpl = globalThis.fetch } = {}) {
 
 function validateInput(body) {
   const tagName = String(body?.tagName || "").trim();
-  const title = String(body?.title || "").trim().slice(0, 190);
+  const title = String(body?.title || "").trim().slice(0, 120);
+  const description = String(body?.description || "").trim().slice(0, 240);
   if (!tagName || tagName.length > 100) return { ok: false, error: "Choose a valid Dub tag" };
 
   let url;
@@ -94,7 +108,7 @@ function validateInput(body) {
   url.password = "";
   url.searchParams.delete("via");
 
-  return { ok: true, tagName, title, url: url.toString() };
+  return { ok: true, description, tagName, title, url: url.toString() };
 }
 
 function consumeRateLimit(actor) {

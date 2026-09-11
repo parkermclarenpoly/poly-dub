@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const { createHandler } = require("../api/create-link.js");
 const { createHandler: createLoginHandler } = require("../api/login.js");
+const { OG_HTML_LIMIT_BYTES, buildOgPreview, getEventSlug, measureHtmlBytes } = require("../api/og-preview.js");
 const {
   createSessionToken,
   hashPassword,
@@ -97,6 +98,7 @@ async function testDefaultTagFlow() {
   assert.equal(harness.getRequestBody().tagName, "@DefaultTag");
   assert.equal(harness.getRequestAuthorization(), "Bearer test-session-token");
   assert.equal(harness.getMessages().at(-1).shortLink, "https://poly.market/example");
+  assert.equal(harness.getMessages().at(-1).ogWorkaround, false);
 }
 
 async function testPickerMode() {
@@ -127,6 +129,41 @@ async function testPickerTagOverride() {
   assert.equal(harness.getRequestBody().tagName, "@AlternateTag");
 }
 
+function createStreamedPage(totalBytes, { chunkSize = 256 * 1024, contentLength = null } = {}) {
+  let sent = 0;
+  let cancelled = false;
+  const body = {
+    cancel: async () => { cancelled = true; },
+    getReader: () => ({
+      cancel: async () => { cancelled = true; },
+      read: async () => {
+        if (cancelled || sent >= totalBytes) return { done: true, value: undefined };
+        const size = Math.min(chunkSize, totalBytes - sent);
+        sent += size;
+        return { done: false, value: new Uint8Array(size) };
+      },
+    }),
+  };
+  return {
+    body,
+    headers: { get: (name) => (name === "content-length" && contentLength != null ? String(contentLength) : null) },
+    ok: true,
+    wasCancelled: () => cancelled,
+    bytesSent: () => sent,
+  };
+}
+
+// Routes the handler's two upstream calls: the Polymarket page measurement and the Dub API.
+function createRoutedFetch({ pageBytes, onDubBody }) {
+  return async (url, options) => {
+    if (String(url).startsWith("https://api.dub.co/")) {
+      onDubBody(JSON.parse(options.body));
+      return { json: async () => ({ shortLink: "https://poly.market/test" }), ok: true };
+    }
+    return createStreamedPage(pageBytes);
+  };
+}
+
 function createResponseHarness() {
   const result = { body: null, headers: {}, status: 0 };
   return {
@@ -151,10 +188,8 @@ async function testProxyFlow() {
   try {
     let dubBody;
     const handler = createHandler({
-      fetchImpl: async (_url, options) => {
-        dubBody = JSON.parse(options.body);
-        return { json: async () => ({ shortLink: "https://poly.market/test" }), ok: true };
-      },
+      fetchImpl: createRoutedFetch({ pageBytes: 900_000, onDubBody: (body) => { dubBody = body; } }),
+      ogPreviewOptions: { cache: new Map() },
     });
     const { response, result } = createResponseHarness();
     await handler({
@@ -172,6 +207,87 @@ async function testProxyFlow() {
     assert.equal(dubBody.tagNames, "@ExactTeamTag");
     assert.equal(new URL(dubBody.url).searchParams.has("via"), false);
     assert.equal(new URL(dubBody.url).searchParams.get("source"), "test");
+    assert.equal(dubBody.proxy, undefined);
+    assert.equal(dubBody.image, undefined);
+    assert.equal(result.body.ogWorkaround, false);
+  } finally {
+    restoreEnvironment("POLY_DUB_SESSION_SECRET", originalSessionSecret);
+    restoreEnvironment("DUB_API_KEY", originalDubApiKey);
+  }
+}
+
+async function testOgPreviewMeasurement() {
+  assert.equal(getEventSlug("https://polymarket.com/event/presidential-election-winner-2028?tid=1"), "presidential-election-winner-2028");
+  assert.equal(getEventSlug("https://polymarket.com/event/some%20slug/market-x"), "some slug");
+  assert.equal(getEventSlug("https://polymarket.com/markets/politics"), null);
+  assert.equal(getEventSlug("not a url"), null);
+
+  const bigPage = createStreamedPage(8_400_000);
+  const measured = await measureHtmlBytes("https://polymarket.com/event/big", { fetchImpl: async () => bigPage });
+  assert.ok(measured >= OG_HTML_LIMIT_BYTES, "should report at least the limit for oversized pages");
+  assert.ok(bigPage.bytesSent() < 8_400_000, "should stop streaming once the limit is crossed");
+  assert.equal(bigPage.wasCancelled(), true);
+
+  const smallPage = createStreamedPage(1_000_000);
+  assert.equal(await measureHtmlBytes("https://polymarket.com/event/small", { fetchImpl: async () => smallPage }), 1_000_000);
+
+  const declared = createStreamedPage(10, { contentLength: 5_000_000 });
+  assert.equal(await measureHtmlBytes("https://polymarket.com/event/declared", { fetchImpl: async () => declared }), 5_000_000);
+
+  assert.equal(await measureHtmlBytes("https://polymarket.com/event/down", { fetchImpl: async () => { throw new Error("offline"); } }), null);
+  assert.equal(await measureHtmlBytes("https://polymarket.com/event/404", { fetchImpl: async () => ({ ok: false }) }), null);
+}
+
+async function testOgPreviewDecision() {
+  const cache = new Map();
+  let fetches = 0;
+  const fetchImpl = async () => { fetches += 1; return createStreamedPage(4_000_000); };
+
+  const preview = await buildOgPreview("https://polymarket.com/event/presidential-election-winner-2028", { cache, fetchImpl, now: 123 });
+  assert.equal(preview.eventSlug, "presidential-election-winner-2028");
+  assert.equal(preview.image, "https://polymarket.com/api/og?eslug=presidential-election-winner-2028&tid=123");
+
+  await buildOgPreview("https://polymarket.com/event/presidential-election-winner-2028", { cache, fetchImpl, now: 124 });
+  assert.equal(fetches, 1, "second lookup for the same slug should hit the cache");
+
+  assert.equal(await buildOgPreview("https://polymarket.com/event/tiny", { cache: new Map(), fetchImpl: async () => createStreamedPage(50_000) }), null);
+  assert.equal(await buildOgPreview("https://polymarket.com/markets", { cache: new Map(), fetchImpl }), null);
+  assert.equal(await buildOgPreview("https://polymarket.com/event/unreachable", { cache: new Map(), fetchImpl: async () => { throw new Error("offline"); } }), null);
+}
+
+async function testProxyAppliesOgWorkaroundForBigPages() {
+  const sessionSecret = "test-session-secret-that-is-long-enough";
+  const accessToken = createSessionToken(sessionSecret);
+  const originalSessionSecret = process.env.POLY_DUB_SESSION_SECRET;
+  const originalDubApiKey = process.env.DUB_API_KEY;
+  process.env.POLY_DUB_SESSION_SECRET = sessionSecret;
+  process.env.DUB_API_KEY = "test-dub-key";
+
+  try {
+    let dubBody;
+    const handler = createHandler({
+      fetchImpl: createRoutedFetch({ pageBytes: 8_400_000, onDubBody: (body) => { dubBody = body; } }),
+      ogPreviewOptions: { cache: new Map(), now: 555 },
+    });
+    const { response, result } = createResponseHarness();
+    await handler({
+      body: {
+        description: "Who will win the 2028 US presidential election?",
+        tagName: "@polymarket",
+        title: "Presidential Election Winner 2028",
+        url: "https://polymarket.com/event/presidential-election-winner-2028?tid=99",
+      },
+      headers: { authorization: `Bearer ${accessToken}` },
+      method: "POST",
+    }, response);
+
+    assert.equal(result.status, 200);
+    assert.equal(result.body.ogWorkaround, true);
+    assert.equal(dubBody.proxy, true);
+    assert.equal(dubBody.image, "https://polymarket.com/api/og?eslug=presidential-election-winner-2028&tid=555");
+    assert.equal(dubBody.title, "Presidential Election Winner 2028");
+    assert.equal(dubBody.description, "Who will win the 2028 US presidential election?");
+    assert.equal(dubBody.url, "https://polymarket.com/event/presidential-election-winner-2028?tid=99");
   } finally {
     restoreEnvironment("POLY_DUB_SESSION_SECRET", originalSessionSecret);
     restoreEnvironment("DUB_API_KEY", originalDubApiKey);
@@ -293,6 +409,9 @@ Promise.resolve()
   .then(testDefaultModeAlternateMenus)
   .then(testPickerTagOverride)
   .then(testProxyFlow)
+  .then(testOgPreviewMeasurement)
+  .then(testOgPreviewDecision)
+  .then(testProxyAppliesOgWorkaroundForBigPages)
   .then(testProxyRejectsUnauthorizedAndExternalUrls)
   .then(testLoginFlow)
   .then(testSessionSecurity)

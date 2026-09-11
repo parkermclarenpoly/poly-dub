@@ -126,8 +126,9 @@ async function runLinkAction(tab, requestedTag = "") {
       "content-type": "application/json",
     },
     body: JSON.stringify({
+      description: page.description ? String(page.description).slice(0, 240) : undefined,
       tagName,
-      title: page.title ? String(page.title).slice(0, 190) : undefined,
+      title: page.title ? String(page.title).slice(0, 120) : undefined,
       url: page.url,
     }),
   });
@@ -143,13 +144,14 @@ async function runLinkAction(tab, requestedTag = "") {
   if (!data.shortLink) throw new Error("Dub did not return a short link");
 
   const copied = await chrome.tabs.sendMessage(tab.id, {
+    ogWorkaround: Boolean(data.ogWorkaround),
     shortLink: data.shortLink,
     tagName,
     type: "POLY_DUB_COPY_LINK",
   });
   if (!copied?.ok) throw new Error(copied?.error || "Could not copy the Dub link");
 
-  await showBadge("OK", "#039855");
+  await showBadge(data.ogWorkaround ? "OG" : "OK", "#039855");
 }
 
 function normalizeSettings(raw) {

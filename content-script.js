@@ -6,6 +6,7 @@
     if (message?.type === "POLY_DUB_GET_PAGE") {
       try {
         sendResponse({
+          description: getPolymarketDescription(),
           ok: true,
           title: getPolymarketTitle(),
           url: getCleanPolymarketUrl(),
@@ -19,7 +20,9 @@
     if (message?.type === "POLY_DUB_COPY_LINK") {
       copyToClipboard(message.shortLink)
         .then(() => {
-          showToast(`Dub link copied · ${message.tagName}`);
+          showToast(message.ogWorkaround
+            ? `Dub link copied · ${message.tagName} · OG preview fix applied`
+            : `Dub link copied · ${message.tagName}`);
           sendResponse({ ok: true });
         })
         .catch((error) => sendResponse({ ok: false, error: getErrorMessage(error) }));
@@ -52,6 +55,11 @@
       .replace(/\s*[-|]\s*Polymarket\s*$/i, "")
       .replace(/\s*[|-]\s*Prediction Market\s*$/i, "")
       .trim();
+  }
+
+  function getPolymarketDescription() {
+    const raw = getMetaContent("property", "og:description") || getMetaContent("name", "description");
+    return normalizeText(raw).slice(0, 240);
   }
 
   function getMetaContent(attribute, value) {
