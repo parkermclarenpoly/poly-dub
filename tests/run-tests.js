@@ -348,6 +348,7 @@ async function testWorkerProxyFlow() {
     assert.equal(result.status, 200);
     assert.equal(result.body.shortLink, "https://poly.market/worker");
     assert.equal(dubBody.tagNames, "@polymarket");
+    assert.equal(dubBody.trackConversion, true);
     assert.equal(new URL(dubBody.url).searchParams.has("via"), false);
   } finally {
     restoreEnvironment("POLY_DUB_WORKER_SECRET", originalWorkerSecret);

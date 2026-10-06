@@ -55,6 +55,8 @@ function createHandler({ fetchImpl = globalThis.fetch, ogPreviewOptions = {} } =
       const dubBody = {
         tagNames: input.tagName,
         title: input.title || undefined,
+        // Dub Conversion Tracking (sign-ups, deposits); the API defaults it off.
+        trackConversion: true,
         url: input.url,
       };
       if (ogPreview) {
