@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const { verifySessionToken } = require("./auth.js");
 const { buildOgPreview } = require("./og-preview.js");
 
@@ -18,11 +19,20 @@ function createHandler({ fetchImpl = globalThis.fetch, ogPreviewOptions = {} } =
       return;
     }
 
-    if (!verifySessionToken(request.headers.authorization, process.env.POLY_DUB_SESSION_SECRET)) {
+    const workerAuthorized = verifyWorkerSecret(
+      request.headers?.["x-poly-dub-worker-secret"],
+      process.env.POLY_DUB_WORKER_SECRET,
+    );
+    const sessionAuthorized = verifySessionToken(
+      request.headers?.authorization,
+      process.env.POLY_DUB_SESSION_SECRET,
+    );
+    if (!workerAuthorized && !sessionAuthorized) {
       sendJson(response, 401, { error: "Team access expired. Open Poly Dub settings and sign in again." });
       return;
     }
-    if (!consumeRateLimit("polymarket-team")) {
+    const actor = workerAuthorized ? "news-alert-worker" : "polymarket-team";
+    if (!consumeRateLimit(actor)) {
       sendJson(response, 429, { error: "Too many links created. Wait a minute and try again." });
       return;
     }
@@ -74,7 +84,7 @@ function createHandler({ fetchImpl = globalThis.fetch, ogPreviewOptions = {} } =
       }
 
       console.log(JSON.stringify({
-        actor: "polymarket-team",
+        actor,
         event: "link.created",
         host: new URL(input.url).hostname,
         ogWorkaround: Boolean(ogPreview),
@@ -87,6 +97,16 @@ function createHandler({ fetchImpl = globalThis.fetch, ogPreviewOptions = {} } =
       sendJson(response, 502, { error: "Could not reach Dub" });
     }
   };
+}
+
+function verifyWorkerSecret(candidate, configuredSecret) {
+  const supplied = String(candidate || "");
+  const expected = String(configuredSecret || "");
+  if (supplied.length < 32 || expected.length < 32) return false;
+  const suppliedBuffer = Buffer.from(supplied);
+  const expectedBuffer = Buffer.from(expected);
+  return suppliedBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(suppliedBuffer, expectedBuffer);
 }
 
 function validateInput(body) {
@@ -129,7 +149,7 @@ function getDubErrorMessage(data) {
 }
 
 function setResponseHeaders(response) {
-  response.setHeader("access-control-allow-headers", "authorization, content-type");
+  response.setHeader("access-control-allow-headers", "authorization, content-type, x-poly-dub-worker-secret");
   response.setHeader("access-control-allow-methods", "POST, OPTIONS");
   response.setHeader("access-control-allow-origin", "*");
   response.setHeader("cache-control", "no-store");

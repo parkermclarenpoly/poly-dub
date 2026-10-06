@@ -319,6 +319,42 @@ async function testProxyRejectsUnauthorizedAndExternalUrls() {
   }
 }
 
+async function testWorkerProxyFlow() {
+  const workerSecret = "test-worker-secret-that-is-at-least-32-characters";
+  const originalWorkerSecret = process.env.POLY_DUB_WORKER_SECRET;
+  const originalDubApiKey = process.env.DUB_API_KEY;
+  process.env.POLY_DUB_WORKER_SECRET = workerSecret;
+  process.env.DUB_API_KEY = "test-dub-key";
+
+  try {
+    let dubBody;
+    const handler = createHandler({
+      fetchImpl: async (_url, options) => {
+        dubBody = JSON.parse(options.body);
+        return { json: async () => ({ shortLink: "https://poly.market/worker" }), ok: true };
+      },
+    });
+    const { response, result } = createResponseHarness();
+    await handler({
+      body: {
+        tagName: "@polymarket",
+        title: "Worker market",
+        url: "https://polymarket.com/event/worker?via=x-afr2",
+      },
+      headers: { "x-poly-dub-worker-secret": workerSecret },
+      method: "POST",
+    }, response);
+
+    assert.equal(result.status, 200);
+    assert.equal(result.body.shortLink, "https://poly.market/worker");
+    assert.equal(dubBody.tagNames, "@polymarket");
+    assert.equal(new URL(dubBody.url).searchParams.has("via"), false);
+  } finally {
+    restoreEnvironment("POLY_DUB_WORKER_SECRET", originalWorkerSecret);
+    restoreEnvironment("DUB_API_KEY", originalDubApiKey);
+  }
+}
+
 async function testLoginFlow() {
   const password = "test-team-password";
   const sessionSecret = "test-session-secret-that-is-long-enough";
@@ -413,6 +449,7 @@ Promise.resolve()
   .then(testOgPreviewDecision)
   .then(testProxyAppliesOgWorkaroundForBigPages)
   .then(testProxyRejectsUnauthorizedAndExternalUrls)
+  .then(testWorkerProxyFlow)
   .then(testLoginFlow)
   .then(testSessionSecurity)
   .then(testManifestScope)
