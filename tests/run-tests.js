@@ -1,7 +1,5 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const vm = require("node:vm");
-const crypto = require("node:crypto");
 const { createHandler } = require("../api/create-link.js");
 const { createHandler: createLoginHandler } = require("../api/login.js");
 const { OG_HTML_LIMIT_BYTES, buildOgPreview, getEventSlug, measureHtmlBytes } = require("../api/og-preview.js");
@@ -12,137 +10,7 @@ const {
   verifySessionToken,
 } = require("../api/auth.js");
 
-process.env.MARKET_ROUTING_RESOLVER_URL = "https://ledger.example/api/integrations/market-routing";
-process.env.MARKET_ROUTING_API_KEY = "test-routing-secret-at-least-32-characters";
-process.env.MARKET_ROUTING_APP_HOSTS = "polymarket-app.onelink.me";
-
-function createBackgroundHarness(settingsOverrides = {}) {
-  let actionHandler;
-  let messageHandler;
-  let requestBody;
-  let requestAuthorization;
-  let popupPath = null;
-  const messages = [];
-  const menuItems = [];
-  const sessionStorage = {};
-  const settings = {
-    defaultTag: "@DefaultTag",
-    dubTagName: "",
-    dubTags: ["@DefaultTag", "@AlternateTag"],
-    tagSelectionMode: "default",
-    sessionExpiresAt: Date.now() + 60_000,
-    sessionToken: "test-session-token",
-    ...settingsOverrides,
-  };
-  const chrome = {
-    action: {
-      onClicked: { addListener(handler) { actionHandler = handler; } },
-      setBadgeBackgroundColor: async () => {},
-      setBadgeText: async () => {},
-      setPopup: async ({ popup }) => { popupPath = popup; },
-    },
-    contextMenus: {
-      create(item) { menuItems.push(item); },
-      onClicked: { addListener() {} },
-      removeAll: async () => { menuItems.length = 0; },
-    },
-    runtime: {
-      getPlatformInfo: async () => ({}),
-      onInstalled: { addListener() {} },
-      onMessage: { addListener(handler) { messageHandler = handler; } },
-      onStartup: { addListener() {} },
-      openOptionsPage: async () => {},
-    },
-    scripting: { executeScript: async () => {} },
-    storage: {
-      session: {
-        get: async (key) => key == null ? { ...sessionStorage } : { [key]: sessionStorage[key] },
-        set: async (value) => Object.assign(sessionStorage, value),
-        remove: async (keys) => { for (const key of Array.isArray(keys) ? keys : [keys]) delete sessionStorage[key]; },
-      },
-      local: {
-        get: async () => ({ ...settings }),
-        remove: async () => {},
-        set: async (value) => Object.assign(settings, value),
-      },
-      onChanged: { addListener() {} },
-    },
-    tabs: {
-      get: async (tabId) => ({ id: tabId, url: "https://polymarket.com/event/example" }),
-      sendMessage: async (_tabId, message) => {
-        messages.push(message);
-        if (message.type === "POLY_DUB_GET_PAGE") {
-          return { ok: true, title: "Example market", url: "https://polymarket.com/event/example" };
-        }
-        if (["POLY_DUB_COPY_LINK", "POLY_DUB_CLEAR_CONFIRMATION"].includes(message.type)) return { ok: true };
-        throw new Error(`Unexpected message: ${message.type}`);
-      },
-    },
-  };
-  const context = {
-    chrome,
-    crypto,
-    console,
-    decodeURIComponent,
-    encodeURIComponent,
-    fetch: async (_url, options) => {
-      requestBody = JSON.parse(options.body);
-      requestAuthorization = options.headers.authorization;
-      return { json: async () => ({ shortLink: "https://poly.market/example" }), ok: true, status: 200 };
-    },
-    setInterval: () => 1,
-    clearInterval: () => {},
-    setTimeout: () => 1,
-  };
-  vm.runInNewContext(fs.readFileSync("background.js", "utf8"), context);
-  return {
-    action: (tab) => actionHandler(tab),
-    getMessageHandler: () => messageHandler,
-    getMenuItems: () => menuItems,
-    getMessages: () => messages,
-    getPopupPath: () => popupPath,
-    getRequestBody: () => requestBody,
-    getRequestAuthorization: () => requestAuthorization,
-    syncUi: () => context.syncExtensionUi(),
-  };
-}
-
-async function testDefaultTagFlow() {
-  const harness = createBackgroundHarness();
-  await harness.action({ id: 17, url: "https://polymarket.com/event/example" });
-  assert.equal(harness.getRequestBody().tagName, "@DefaultTag");
-  assert.equal(harness.getRequestAuthorization(), "Bearer test-session-token");
-  assert.equal(harness.getMessages().at(-1).shortLink, "https://poly.market/example");
-  assert.equal(harness.getMessages().at(-1).ogWorkaround, false);
-}
-
-async function testPickerMode() {
-  const harness = createBackgroundHarness({ tagSelectionMode: "ask" });
-  await harness.syncUi();
-  assert.equal(harness.getPopupPath(), "popup.html");
-  assert.equal(harness.getMenuItems().length, 0);
-}
-
-async function testDefaultModeAlternateMenus() {
-  const harness = createBackgroundHarness();
-  await harness.syncUi();
-  assert.equal(harness.getPopupPath(), "");
-  assert.equal(harness.getMenuItems().length, 1);
-  assert.equal(harness.getMenuItems()[0].title, "Create link with @AlternateTag");
-}
-
-async function testPickerTagOverride() {
-  const harness = createBackgroundHarness({ tagSelectionMode: "ask" });
-  const response = await new Promise((resolve) => {
-    harness.getMessageHandler()({
-      tabId: 17,
-      tagName: "@AlternateTag",
-      type: "POLY_DUB_CREATE_WITH_TAG",
-    }, {}, resolve);
-  });
-  assert.equal(response.ok, true);
-  assert.equal(harness.getRequestBody().tagName, "@AlternateTag");
-}
+// Extension account, consent, and replay behavior is exercised in extension-routing.test.js.
 
 function createStreamedPage(totalBytes, { chunkSize = 256 * 1024, contentLength = null } = {}) {
   let sent = 0;
@@ -171,13 +39,6 @@ function createStreamedPage(totalBytes, { chunkSize = 256 * 1024, contentLength 
 // Routes the handler's two upstream calls: the Polymarket page measurement and the Dub API.
 function createRoutedFetch({ pageBytes, onDubBody }) {
   return async (url, options) => {
-    if (String(url).startsWith("https://ledger.example/")) {
-      const source = new URL(url).searchParams.get("url");
-      return { ok: true, json: async () => ({ routing: {
-        status: "matched", url: source,
-        geo: { US: "https://polymarket-app.onelink.me/S8ac/example?deep_link_value=event%2Fexample&af_web_dp=https%3A%2F%2Fpolymarket.us%2Fevent%2Fexample" },
-      } }) };
-    }
     if (String(url).startsWith("https://api.dub.co/")) {
       onDubBody(JSON.parse(options.body));
       return { json: async () => ({ shortLink: "https://poly.market/test" }), ok: true };
@@ -441,7 +302,7 @@ function testManifestScope() {
     "storage",
   ]);
   assert.deepEqual(manifest.host_permissions.sort(), [
-    "https://poly-dub-api.vercel.app/*",
+    "https://dub-links-nine.vercel.app/*",
     "https://polymarket.com/*",
     "https://polymarket.us/*",
     "https://www.polymarket.com/*",
@@ -459,16 +320,13 @@ function testCredentialSafety() {
     "README.md",
   ].map((file) => fs.readFileSync(file, "utf8")).join("\n");
   assert.equal(optionsHtml.includes("Dub API key"), false);
-  assert.equal(optionsHtml.includes("Team password"), true);
+  assert.equal(optionsHtml.includes("Team password"), false);
+  assert.equal(optionsHtml.includes("Personal API key"), true);
   assert.equal(background.includes("__POLY_DUB_ACCESS_TOKEN__"), false);
   assert.equal(repositoryText.includes("POLY_DUB_PASSWORD_HASH="), false);
 }
 
 Promise.resolve()
-  .then(testDefaultTagFlow)
-  .then(testPickerMode)
-  .then(testDefaultModeAlternateMenus)
-  .then(testPickerTagOverride)
   .then(testProxyFlow)
   .then(testOgPreviewMeasurement)
   .then(testOgPreviewDecision)

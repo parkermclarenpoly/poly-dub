@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Poly Dub",
-  "description": "Create and copy a tagged Polymarket link with automatic DeFi and US routing.",
+  "description": "Create and copy an account-owned PolyLinks link with automatic DeFi and US routing.",
   "version": "1.6.0",
   "minimum_chrome_version": "110",
   "action": {
@@ -25,7 +25,7 @@
     "storage"
   ],
   "host_permissions": [
-    "https://poly-dub-api.vercel.app/*",
+    "https://dub-links-nine.vercel.app/*",
     "https://polymarket.com/*",
     "https://www.polymarket.com/*",
     "https://polymarket.us/*",

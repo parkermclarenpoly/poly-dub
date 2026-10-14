@@ -4,6 +4,6 @@
   "private": true,
   "scripts": {
     "package:extension": "node scripts/package-release.js",
-    "test": "node tests/run-tests.js && node --test tests/market-routing.test.js tests/extension-routing.test.js tests/streaming.test.js"
+    "test": "node tests/run-tests.js && node --test tests/*.test.js"
   }
 }

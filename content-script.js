@@ -19,13 +19,16 @@
     }
 
     if (message?.type === "POLY_DUB_COPY_LINK") {
+      if (location.href !== message.sourceUrl) {
+        sendResponse({ ok: false, error: "The page changed. Click Poly Dub again to copy the saved link." });
+        return;
+      }
       copyToClipboard(message.shortLink)
         .then(() => {
           clearConfirmation();
           const routing = message.routingMode === "regional" ? " · regional routing" :
             message.routingMode === "defi_only" ? " · DeFi-only" : "";
-          const preview = message.ogWorkaround ? " · OG preview fix applied" : "";
-          showToast(`Dub link copied · ${message.tagName}${routing}${preview}`);
+          showToast(`Link copied · ${message.accountLabel}${routing}`);
           sendResponse({ ok: true });
         })
         .catch((error) => sendResponse({ ok: false, error: getErrorMessage(error) }));
@@ -50,7 +53,7 @@
 
     if (message?.type === "POLY_DUB_SHOW_ERROR") {
       clearConfirmation();
-      showToast(message.message || "Could not create Dub link", true);
+      showToast(message.message || "Could not create PolyLinks link", true);
       sendResponse({ ok: true });
     }
   });
@@ -72,7 +75,7 @@
     const explanation = document.createElement("div");
     explanation.textContent = `${message.message || "A verified US destination is not available."} A DeFi-only link sends everyone to Polymarket DeFi and has no US routing.`;
     const label = document.createElement("div");
-    label.textContent = `Tag: ${message.tagName}`;
+    label.textContent = `Account: ${message.accountLabel}`;
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = "Create DeFi-only link";
@@ -128,7 +131,7 @@
   }
 
   async function copyToClipboard(text) {
-    if (!text) throw new Error("Dub returned an empty link");
+    if (!text) throw new Error("PolyLinks returned an empty link");
     try {
       await navigator.clipboard.writeText(text);
       return;
@@ -156,6 +159,8 @@
       "right:20px",
       "z-index:2147483647",
       "padding:11px 14px",
+      "max-width:380px",
+      "overflow-wrap:anywhere",
       "border:1px solid rgba(255,255,255,.22)",
       "border-radius:7px",
       `background:${isError ? "#b42318" : "#0b1833"}`,
@@ -165,7 +170,7 @@
       "letter-spacing:0",
     ].join(";");
     document.documentElement.append(toast);
-    setTimeout(() => toast.remove(), 2200);
+    setTimeout(() => toast.remove(), isError ? 12000 : 2200);
   }
 
   function normalizeText(value) {

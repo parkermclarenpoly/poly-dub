@@ -1,26 +1,21 @@
 const crypto = require("node:crypto");
 const { verifySessionToken } = require("./auth.js");
 const { buildOgPreview } = require("./og-preview.js");
-const { resolveForMint, RoutingError, sourceKind } = require("./market-routing.js");
 
 const MAX_REQUESTS_PER_MINUTE = 60;
+const POLYMARKET_HOST_PATTERN = /^(?:[a-z0-9-]+\.)*polymarket\.com$/i;
 const requestWindows = new Map();
 
 function createHandler({ fetchImpl = globalThis.fetch, ogPreviewOptions = {} } = {}) {
   return async function handler(request, response) {
     setResponseHeaders(response);
-    let streaming = false;
-    const reply = (status, body) => {
-      if (streaming) response.end(JSON.stringify({ ...body, status }));
-      else sendJson(response, status, body);
-    };
 
     if (request.method === "OPTIONS") {
       response.status(204).end();
       return;
     }
     if (request.method !== "POST") {
-      reply(405, { error: "Method not allowed" });
+      sendJson(response, 405, { error: "Method not allowed" });
       return;
     }
 
@@ -33,52 +28,36 @@ function createHandler({ fetchImpl = globalThis.fetch, ogPreviewOptions = {} } =
       process.env.POLY_DUB_SESSION_SECRET,
     );
     if (!workerAuthorized && !sessionAuthorized) {
-      reply(401, { error: "Team access expired. Open Poly Dub settings and sign in again." });
+      sendJson(response, 401, { error: "Team access expired. Open Poly Dub settings and sign in again." });
       return;
     }
     const actor = workerAuthorized ? "news-alert-worker" : "polymarket-team";
     if (!consumeRateLimit(actor)) {
-      reply(429, { error: "Too many links created. Wait a minute and try again." });
+      sendJson(response, 429, { error: "Too many links created. Wait a minute and try again." });
       return;
     }
 
     const input = validateInput(request.body);
     if (!input.ok) {
-      reply(400, { error: input.error });
+      sendJson(response, 400, { error: input.error });
       return;
     }
 
     const dubApiKey = String(process.env.DUB_API_KEY || "").trim();
     if (!dubApiKey) {
-      reply(503, { error: "Poly Dub is not configured" });
+      sendJson(response, 503, { error: "Poly Dub is not configured" });
       return;
     }
 
-    let heartbeat;
     try {
-      if (request.body?.streamResponse === true && !workerAuthorized) {
-        // Chrome MV3 requires fetch response headers within 30 seconds. Flush
-        // immediately; JSON whitespace keeps a valid single JSON response while
-        // the selected-market review finishes. Final JSON carries logical status.
-        streaming = true;
-        response.status(200);
-        response.write(" ");
-        heartbeat = setInterval(() => response.write(" "), 15000);
-      }
-      // The worker is an independent integration. Browser sessions always use
-      // verified regional routing, including a fresh lookup after consent.
-      const routing = workerAuthorized
-        ? { url: input.url }
-        : await resolveForMint(input.url, { allowDefiOnly: request.body?.allowDefiOnly === true, fetchImpl });
       // Big event pages break X's crawler; see api/og-preview.js.
-      const ogPreview = await buildOgPreview(routing.url, { fetchImpl, ...ogPreviewOptions });
+      const ogPreview = await buildOgPreview(input.url, { fetchImpl, ...ogPreviewOptions });
       const dubBody = {
         tagNames: input.tagName,
         title: input.title || undefined,
         // Dub Conversion Tracking (sign-ups, deposits); the API defaults it off.
         trackConversion: true,
-        url: routing.url,
-        ...(routing.geo ? { geo: routing.geo } : {}),
+        url: input.url,
       };
       if (ogPreview) {
         dubBody.proxy = true;
@@ -94,17 +73,15 @@ function createHandler({ fetchImpl = globalThis.fetch, ogPreviewOptions = {} } =
           "content-type": "application/json",
         },
         body: JSON.stringify(dubBody),
-        signal: AbortSignal.timeout(12000),
-        redirect: "error",
       });
       const data = await dubResponse.json().catch(() => ({}));
       if (!dubResponse.ok) {
         const message = getDubErrorMessage(data);
-        reply(502, { error: message || "Dub could not create the link" });
+        sendJson(response, 502, { error: message || "Dub could not create the link" });
         return;
       }
       if (!data.shortLink) {
-        reply(502, { error: "Dub did not return a short link" });
+        sendJson(response, 502, { error: "Dub did not return a short link" });
         return;
       }
 
@@ -115,18 +92,11 @@ function createHandler({ fetchImpl = globalThis.fetch, ogPreviewOptions = {} } =
         ogWorkaround: Boolean(ogPreview),
         htmlBytes: ogPreview?.htmlBytes,
         tag: input.tagName,
-        routingMode: routing.routingMode,
       }));
-      reply(200, { ogWorkaround: Boolean(ogPreview), shortLink: data.shortLink, ...(routing.routingMode ? { routingMode: routing.routingMode } : {}) });
+      sendJson(response, 200, { ogWorkaround: Boolean(ogPreview), shortLink: data.shortLink });
     } catch (error) {
-      if (error instanceof RoutingError) {
-        reply(error.status, { error: error.message, ...(error.requiresDefiConfirmation ? { requiresDefiConfirmation: true } : {}) });
-        return;
-      }
       console.error("Poly Dub upstream request failed", error instanceof Error ? error.message : error);
-      reply(502, { error: "Could not reach Dub" });
-    } finally {
-      clearInterval(heartbeat);
+      sendJson(response, 502, { error: "Could not reach Dub" });
     }
   };
 }
@@ -149,12 +119,15 @@ function validateInput(body) {
 
   let url;
   try {
-    const raw = String(body?.url || "");
-    sourceKind(raw);
-    url = new URL(raw);
+    url = new URL(String(body?.url || ""));
   } catch {
+    return { ok: false, error: "Choose a valid Polymarket URL" };
+  }
+  if (url.protocol !== "https:" || !POLYMARKET_HOST_PATTERN.test(url.hostname)) {
     return { ok: false, error: "Only Polymarket links are allowed" };
   }
+  url.username = "";
+  url.password = "";
   url.searchParams.delete("via");
 
   return { ok: true, description, tagName, title, url: url.toString() };

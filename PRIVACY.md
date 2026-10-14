@@ -1,11 +1,13 @@
-# Privacy
+# Poly Dub privacy
 
-Poly Dub does not collect analytics, browsing history, or personal information.
+Poly Dub acts only after a toolbar, account-menu or explicit confirmation action on a supported Polymarket page.
 
-The extension stores the user's chosen tags and a temporary signed team session in local Chrome extension storage. It does not store the team password and does not contain or receive the Dub API key.
+The extension stores a personal PolyLinks API key, authorized account labels, the default account and picker preference in local Chrome extension storage. This key grants the existing user's PolyLinks account access; it is not the Dub workspace key. It is sent only over HTTPS to the PolyLinks API for account discovery and link creation. No key is sent to page scripts, embedded in a URL, or included in the release package.
 
-The team password is sent over HTTPS only when unlocking the extension. The server checks a salted password hash and returns an expiring session; it does not store or log the submitted password.
+Link creation sends the current page URL, selected account ID, a unique request identity and any explicit DeFi-only consent to PolyLinks. PolyLinks applies its current authorization, quotas, account attribution and verified regional routing. Market matching can update the shared audited match cache. The extension does not send browsing history or unrelated tabs.
 
-When the user clicks the extension on a Polymarket DeFi or US page, the current page URL, page title, chosen tag, and temporary session are sent over HTTPS to the Poly Dub proxy. The session cannot access Dub directly. The proxy verifies access and sends the selected URL to PolyLedger's routing service. A selected-market review may store audited matching evidence in that service. The team session and saved tag are not sent to the routing service, and its credential is never sent to the extension.
+Request records are stored locally to recover from uncertain network outcomes without creating duplicate links. These include the submitted URL, account ID, request identity, a credential fingerprint (not the key), and known result or failure information. Consent is limited to the exact tab, page, account and credential and is invalidated by navigation or settings changes. Clearing extension storage or uninstalling removes local records; reconcile pending creations with a PolyLinks admin before doing so.
 
-After routing succeeds (or the user explicitly confirms an unmatched DeFi-only link), the proxy sends the verified destinations, title and tag to Dub. Dub conversion tracking remains enabled. The proxy records the source hostname, tag and routing mode for security auditing; it does not log the session or full source URL. Pending confirmation state is kept in Chrome's session storage so it survives an idle extension-worker restart, and is cleared by navigation, settings changes or a new action. It is not exposed to page scripts.
+The extension copies the returned link to the clipboard and displays a result or consent message on the active page. Page scripts receive neither the API key nor server credentials. PolyLinks and Dub retain their normal server-side link, ownership, request and analytics records.
+
+The extension does not collect or calculate creator payouts.
