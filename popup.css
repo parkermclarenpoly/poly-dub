@@ -1,89 +1,21 @@
-:root {
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  letter-spacing: 0;
-  color: #101828;
-}
-
+:root { color-scheme: light; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #101828; }
 * { box-sizing: border-box; }
-
-body {
-  width: 280px;
-  margin: 0;
-  background: #f5f7fb;
-}
-
-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  background: #175cd3;
-  color: #fff;
-}
-
+body { width: 320px; margin: 0; background: #f5f7fb; }
+header { display: flex; align-items: center; gap: 10px; padding: 16px; background: #175cd3; color: #fff; }
 header img { flex: 0 0 28px; }
 h1, p { margin: 0; }
 h1 { font-size: 15px; line-height: 1.2; }
-header p { margin-top: 1px; color: #dbe9ff; font-size: 11px; }
-
-main {
-  display: grid;
-  gap: 8px;
-  padding: 14px;
-}
-
-.tag-button {
-  width: 100%;
-  min-height: 42px;
-  padding: 8px 11px;
-  border: 1px solid #d0d5dd;
-  border-radius: 6px;
-  background: #fff;
-  color: #101828;
-  cursor: pointer;
-  font: 700 13px/1.25 inherit;
-  letter-spacing: 0;
-  overflow-wrap: anywhere;
-  text-align: left;
-}
-
-.tag-button:hover,
-.tag-button:focus-visible {
-  border-color: #175cd3;
-  outline: 3px solid rgba(23, 92, 211, 0.12);
-}
-
-.tag-button.default::after {
-  content: "Default";
-  float: right;
-  margin-left: 8px;
-  color: #667085;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-footer {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 14px;
-  border-top: 1px solid #e4e7ec;
-  background: #fff;
-}
-
-#status {
-  min-width: 0;
-  color: #667085;
-  font-size: 11px;
-}
-
-#openSettings {
-  border: 0;
-  background: transparent;
-  color: #175cd3;
-  cursor: pointer;
-  font: 700 11px/1 inherit;
-  letter-spacing: 0;
-}
+header p { margin-top: 3px; color: #dbe9ff; font-size: 11px; }
+main { display: grid; gap: 8px; padding: 14px; max-height: 420px; overflow-y: auto; }
+.account-button { position: relative; width: 100%; min-height: 60px; padding: 10px 11px; border: 1px solid #d0d5dd; border-radius: 7px; background: #fff; color: #101828; cursor: pointer; font-family: inherit; overflow-wrap: anywhere; text-align: left; }
+.account-button strong { display: block; font-size: 13px; line-height: 1.4; }
+.account-platform { display: block; margin-top: 4px; color: #667085; font-size: 11px; line-height: 1.4; }
+.account-button:hover, .account-button:focus-visible { border-color: #175cd3; outline: 3px solid rgba(23, 92, 211, 0.12); }
+.account-button.default { border-color: #a9c7f5; padding-right: 65px; }
+.account-button.default::after { content: "Default"; position: absolute; top: 13px; right: 10px; color: #175cd3; font-size: 10px; font-weight: 600; }
+.account-button:disabled { cursor: wait; opacity: 0.6; }
+.account-button.creating { border-color: #175cd3; background: #edf4ff; opacity: 1; }
+footer { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-top: 1px solid #e4e7ec; background: #fff; }
+#status { min-width: 0; color: #667085; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+#openSettings { flex: 0 0 auto; min-height: 28px; padding: 4px 0; border: 0; background: transparent; color: #175cd3; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 700; }
+#openSettings:focus-visible { outline: 2px solid #175cd3; outline-offset: 3px; border-radius: 2px; }

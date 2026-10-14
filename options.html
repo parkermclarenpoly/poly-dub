@@ -12,48 +12,53 @@
         <img src="icons/icon-48.png" width="36" height="36" alt="">
         <div>
           <h1>Poly Dub</h1>
-          <p>Team link settings</p>
+          <p>Powered by PolyLinks</p>
         </div>
       </div>
-      <span class="status-chip" id="connectionStatus">Not configured</span>
+      <span class="status-chip" id="connectionStatus">Setup required</span>
     </header>
 
     <main>
+      <div class="intro">
+        <h2>Your account. One click.</h2>
+        <p>Create and copy a PolyLinks link from a Polymarket page, with verified US and DeFi routing.</p>
+      </div>
       <form id="settingsForm" class="settings-panel">
         <section class="access-section" aria-labelledby="accessHeading">
           <div class="section-heading">
+            <span class="step" aria-hidden="true">1</span>
             <div>
-              <h2 id="accessHeading">Team access</h2>
-              <p>Enter the shared Polymarket password once on this browser.</p>
+              <h2 id="accessHeading">Connect your personal key</h2>
+              <p>Ask your PolyLinks admin for a personal key from <a href="https://dub-links-nine.vercel.app/admin/api" target="_blank" rel="noopener noreferrer">API access</a>.</p>
             </div>
-            <span class="access-state" id="accessState">Locked</span>
           </div>
-          <label for="teamPassword">Team password</label>
-          <input id="teamPassword" type="password" autocomplete="current-password" placeholder="Enter team password">
+          <label for="apiKey">Personal API key</label>
+          <input id="apiKey" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="keyState" placeholder="Paste your personal API key">
+          <p id="keyState" class="field-hint">Your personal key stays in this extension on this browser.</p>
+          <button id="loadAccounts" class="secondary-button" type="button">Load accounts</button>
         </section>
 
-        <fieldset class="tag-fieldset">
-          <legend>Saved link tags</legend>
-          <div class="add-tag-row">
-            <input id="newTag" type="text" autocomplete="off" spellcheck="false" placeholder="@Polymarket">
-            <button id="addTag" class="secondary-button" type="button">Add tag</button>
-          </div>
-          <div id="tagList" class="tag-list"></div>
+        <fieldset class="account-fieldset" aria-describedby="accountSummary">
+          <legend><span class="step" aria-hidden="true">2</span> Choose a default account</legend>
+          <p id="accountSummary" class="field-hint">Only accounts assigned to your personal key will appear here.</p>
+          <div id="accountList" class="account-list"></div>
         </fieldset>
 
         <label class="mode-toggle" for="askEachTime">
           <input id="askEachTime" type="checkbox">
           <span>
-            <strong>Ask me which tag each time</strong>
-            <small>Otherwise the default tag is used immediately.</small>
+            <strong>Choose an account each time</strong>
+            <small>Otherwise, one click uses your default account.</small>
           </span>
         </label>
 
         <div class="actions">
-          <button class="primary-button" type="submit">Save and continue</button>
+          <button id="saveSettings" class="primary-button" type="submit">Save and continue</button>
+          <span>Account access is checked when you save.</span>
         </div>
-        <p id="formStatus" class="form-status" aria-live="polite"></p>
+        <p id="formStatus" class="form-status" aria-live="polite" aria-atomic="true"></p>
       </form>
+      <p class="page-note">For DeFi pages without a verified US match, Poly Dub asks before creating a DeFi-only link.</p>
     </main>
 
     <script src="options.js"></script>
