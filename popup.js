@@ -46,6 +46,13 @@ async function createLink(tagName, selectedButton) {
     return;
   }
 
+  if (response.pending) {
+    selectedButton.textContent = tagName;
+    status.textContent = response.inProgress ? "A link is already being created…" : "Confirm the DeFi-only link on the page.";
+    for (const button of tagButtons.querySelectorAll("button")) button.disabled = false;
+    return;
+  }
+
   status.textContent = "Copied";
   setTimeout(() => window.close(), 250);
 }

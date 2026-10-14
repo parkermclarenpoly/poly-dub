@@ -2,6 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "functions": {
+    "api/create-link.js": {
+      "maxDuration": 90
+    },
     "api/*.js": {
       "maxDuration": 10
     }
