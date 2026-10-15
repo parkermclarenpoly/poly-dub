@@ -4,7 +4,7 @@
   <img src="icons/poly-dub-logo.png" alt="Poly Dub" width="180">
 </p>
 
-Poly Dub creates and copies a tagged Dub link from a Polymarket DeFi or US page. Verified market pairs automatically route US visitors to the US app/web destination and other visitors to DeFi.
+Poly Dub creates and copies a tagged Dub link from a Polymarket DeFi or US page. Verified market pairs automatically route US visitors to the US app/web destination and other visitors to DeFi. You can also supply a US market URL for a new link.
 
 ## Demo
 
@@ -26,9 +26,13 @@ Open an exact `polymarket.com` or `polymarket.us` page (including `www`) and cli
 
 Choose **Ask me which account each time** in settings to use the account picker. In default mode, other connected accounts are available from the extension's right-click menu. Account labels include the platform so identical handles remain distinct.
 
-A missing cached match can take longer while PolyLinks checks the exact market. The extension preserves the page's market and outcome selectors and does not guess counterparts. If no US match is verified for a DeFi page, it asks you to **Create DeFi-only link**; nothing is copied before that choice. US sources require verified routing. A disabled service or failed lookup stops creation.
+In default-account mode, to choose a US destination yourself, right-click the toolbar icon and select **Create with US link…**. This opens a form for your default account before any link is created, so you can also override an incorrect automatic match. In **Ask me which account each time** mode, enter the optional **US market URL** before choosing an account. Start from a DeFi page: visitors outside the US keep that complete DeFi URL, including market and outcome selectors. The selected account's attribution still applies.
 
-The extension saves request identities before sending them. If a request's outcome is uncertain, clicking again checks the same request instead of creating another link. A pending request may need a PolyLinks admin to reconcile it. Navigation or changing accounts does not discard an uncertain request. Never clear extension storage to retry an uncertain creation: the provider may already have created its link.
+The US URL must be an HTTPS market page on exactly `polymarket.us` or `www.polymarket.us`, such as `/event/market-name`, `/events/market-name` (including child markets), or `/sports/nba/game-name`. Home and league pages, `/hub` sports pages, fragments, credentials, explicit ports and encoded or malformed paths are rejected. Manual selection applies only to the new link; it does not edit the global match registry or existing links. The extension checks that the server used the submitted US target before copying the result.
+
+A missing cached match can take longer while PolyLinks checks the exact market. The extension preserves the page's market and outcome selectors and does not guess counterparts. If no US match is verified for a DeFi page, the page form lets you enter a US market URL or choose **Create DeFi-only link**; nothing is copied before that choice. A rejected manual URL stays in the form so you can correct it. Manual failures never silently create a DeFi-only link. US sources require verified routing. A disabled service or failed lookup stops creation.
+
+The extension saves request identities before sending them. If a request's outcome is uncertain, clicking again checks the same request instead of creating another link. A pending request may need a PolyLinks admin to reconcile it. Navigation or changing accounts does not discard an uncertain request. Manual retries preserve the exact submitted US target and request body; changing the target while a prior request is uncertain is blocked. Once a prior creation is confirmed, deliberately choosing a different manual target creates a new link. Never clear extension storage to retry an uncertain creation: the provider may already have created its link.
 
 ## Account access and privacy
 
@@ -41,13 +45,13 @@ No Dub workspace credential, PolyLedger integration credential, team password or
 - `activeTab` and `scripting`: read the selected Polymarket page and show the result or consent prompt after an extension action.
 - `clipboardWrite`: copy the resulting link.
 - `storage`: save the personal API key, account preferences and request identities locally.
-- `contextMenus`: choose an alternate account from the toolbar menu.
+- `contextMenus`: choose an alternate account or open the manual US-link form from the toolbar menu.
 - `dub-links-nine.vercel.app`: authenticate account discovery and link creation with PolyLinks.
 - Exact `polymarket.com` and `polymarket.us` hosts, including `www`: interact with supported pages.
 
 ## API and release contract
 
-Version 1.6 uses the existing PolyLinks application at `https://dub-links-nine.vercel.app`. Setup calls `GET /api/v1/accounts`. Creation calls `POST /api/v1/links` with bearer authentication, a durable `Idempotency-Key`, and `{account_id, destination, require_routing:true}`. Explicit DeFi consent adds `allow_defi_only:true` and uses a new request identity.
+Version 1.7 uses the existing PolyLinks application at `https://dub-links-nine.vercel.app`. Setup calls `GET /api/v1/accounts`. Creation calls `POST /api/v1/links` with bearer authentication, a durable `Idempotency-Key`, and `{account_id, destination, require_routing:true}`. Explicit DeFi consent adds `allow_defi_only:true` and uses a new request identity. Manual routing instead adds `us_destination` containing the normalized US URL. A manual success must return `routing_mode:"regional"`, `routing_source:"manual"`, and the matching `us_destination`; automatic responses remain compatible.
 
 Creation opts into `X-PolyLinks-Stream: 1`. The server sends headers and whitespace immediately; the final JSON includes the logical `status` and the standard API result. A scoped Chrome API keepalive covers slow matching. The server owns routing, authorization, tags, UTMs, preview behavior, quotas and attribution. The legacy standalone server source in `api/` supports older installations and is not deployed for this release.
 

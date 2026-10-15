@@ -254,3 +254,16 @@ test('a failed storage access restriction never saves or transmits the personal 
   assert.equal(h.writes.length, 0);
   assert.match(h.element('formStatus').textContent, /storage|protect|Chrome/i);
 });
+
+
+test('optional US target is sent with the original source while API rejection preserves the popup draft', async () => {
+  const source = 'https://polymarket.com/event/original?outcome=yes';
+  const h = harness('popup.js', { settings: { ...readySettings, accountSelectionMode: 'ask' }, tabs: [{ id: 17, url: source }], response: { ok: false, error: 'Invalid US market URL.' } }); await flush();
+  h.element('usDestination').value = 'https://polymarket.us/events/right'; await h.popupButtons()[1].click();
+  assert.deepEqual(h.messages[0], { type: 'POLY_DUB_CREATE_WITH_ACCOUNT', accountId: SECOND, tabId: 17, sourceUrl: source, usDestination: 'https://polymarket.us/events/right' });
+  assert.equal(h.element('usDestination').value, 'https://polymarket.us/events/right'); assert.equal(h.element('usDestination').disabled, false); assert.equal(h.closed(), false); assert.match(h.element('status').textContent, /Invalid US/);
+});
+test('manual popup draft cannot silently move to another page', async () => {
+  const tabs = [{ id: 17, url: 'https://polymarket.com/event/original' }]; const h = harness('popup.js', { settings: readySettings, tabs }); await flush(); h.element('usDestination').value = 'https://polymarket.us/event/right'; tabs[0] = { id: 17, url: 'https://polymarket.com/event/different' }; await h.popupButtons()[0].click();
+  assert.equal(h.messages.length, 0); assert.match(h.element('status').textContent, /page.*changed|reopen/i); assert.equal(h.element('usDestination').value, 'https://polymarket.us/event/right');
+});
