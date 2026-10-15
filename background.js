@@ -1,4 +1,5 @@
 const POLY_LINKS_API_URL = "https://dub-links-nine.vercel.app/api/v1/links";
+const MANUAL_US_MENU = "poly-dub-manual-us";
 const ACCOUNT_MENU_PREFIX = "poly-dub-account:";
 const PENDING_CONFIRMATION_PREFIX = "poly-dub-pending:";
 const REQUEST_PREFIX = "poly-dub-request:";
@@ -25,6 +26,10 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 chrome.action.onClicked.addListener(async (tab) => runLinkAction(tab).catch(error => handleActionError(tab, error)));
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === MANUAL_US_MENU) {
+    await runLinkAction(tab, undefined, undefined, true).catch(error => handleActionError(tab, error));
+    return;
+  }
   if (!String(info.menuItemId).startsWith(ACCOUNT_MENU_PREFIX)) return;
   const accountId = String(info.menuItemId).slice(ACCOUNT_MENU_PREFIX.length);
   await runLinkAction(tab, accountId).catch(error => handleActionError(tab, error));
@@ -39,14 +44,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "POLY_DUB_CREATE_WITH_ACCOUNT") {
     if (sender.id !== chrome.runtime.id || sender.tab || sender.url !== chrome.runtime.getURL("popup.html")) return;
     tabId = message.tabId;
-    action = chrome.tabs.get(tabId).then(tab => runLinkAction(tab, message.accountId));
+    action = chrome.tabs.get(tabId).then(tab => {
+      if (message.usDestination !== undefined && message.sourceUrl !== tab.url) throw new Error("The page changed. Reopen Poly Dub on the current market.");
+      return runLinkAction(tab, message.accountId, message.usDestination);
+    });
   } else if (message?.type === "POLY_DUB_CONFIRM_DEFI_ONLY") {
     tabId = sender.tab?.id;
-    action = confirmDefiOnly(message.requestId, sender);
+    action = confirmChoice(message.requestId, sender);
+  } else if (message?.type === "POLY_DUB_CONFIRM_MANUAL_US") {
+    tabId = sender.tab?.id;
+    action = confirmChoice(message.requestId, sender, message.usDestination, true);
   } else return;
   action.then(sendResponse).catch(async (error) => {
     const tab = tabId ? await chrome.tabs.get(tabId).catch(() => null) : null;
-    await handleActionError(tab, error);
+    await handleActionError(tab, error, message?.type === "POLY_DUB_CONFIRM_MANUAL_US");
     sendResponse({ ok: false, error: getErrorMessage(error) });
   });
   return true;
@@ -71,6 +82,7 @@ async function syncExtensionUi() {
   await chrome.action.setPopup({ popup: shouldAsk ? "popup.html" : "" });
   await chrome.contextMenus.removeAll();
   if (shouldAsk) return;
+  chrome.contextMenus.create({ contexts: ["action"], id: MANUAL_US_MENU, title: "Create with US link…" });
   for (const account of settings.polyLinksAccounts) {
     if (account.id !== settings.defaultAccountId) chrome.contextMenus.create({ contexts: ["action"], id: `${ACCOUNT_MENU_PREFIX}${account.id}`, title: `Create link with ${accountLabel(account)}` });
   }
@@ -89,6 +101,22 @@ function supportedUrl(value) {
   catch { return false; }
 }
 function isDefiUrl(value) { return ["polymarket.com", "www.polymarket.com"].includes(new URL(value).hostname); }
+function normalizeUsDestination(value) {
+  const invalid = () => { throw new Error("Enter an HTTPS Polymarket US market URL, such as https://polymarket.us/event/market-name. Home, league pages, fragments and explicit ports are not supported."); };
+  if (typeof value !== "string") return invalid();
+  const trimmed = value.trim();
+  if (trimmed.length > 8192) return invalid();
+  // Inspect the raw authority and path before URL normalization can hide a
+  // default port, encoded host, backslash or dot segment.
+  if (/[\s\\\u0000-\u001f\u007f#]/.test(trimmed)) return invalid();
+  const match = /^https:\/\/(?:www\.)?polymarket\.us(\/[^?]*)(?:\?.*)?$/i.exec(trimmed);
+  if (!match) return invalid();
+  const rawPath = match[1];
+  const event = /^\/events?\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\/?$/.test(rawPath);
+  const sports = /^\/sports\/[A-Za-z0-9_-]+\/([A-Za-z0-9_-]+)\/?$/.exec(rawPath);
+  if (!event && (!sports || sports[1].toLowerCase() === "hub")) return invalid();
+  return new URL(trimmed).href;
+}
 async function digest(value) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, "0")).join("");
@@ -111,8 +139,10 @@ async function assertCurrentAction(tabId, action) {
     throw new Error("Your account or API key changed. Click Poly Dub again before continuing.");
   }
 }
-async function runLinkAction(tab, requestedAccountId) {
+async function runLinkAction(tab, requestedAccountId, usDestination, promptManual = false) {
   if (!tab?.id || !supportedUrl(tab.url)) { await showBadge("POLY", "#667085"); return { ok: false, error: "Open a Polymarket DeFi or US page first." }; }
+  if ((promptManual || usDestination !== undefined) && !isDefiUrl(tab.url)) throw new Error("Use a Polymarket DeFi page as the source when adding a US destination.");
+  const normalizedUs = usDestination === undefined ? undefined : normalizeUsDestination(usDestination);
   if (inFlightActions.has(tab.id)) return { ok: true, pending: true, inProgress: true };
   const action = { sourceUrl: tab.url, valid: true };
   inFlightActions.set(tab.id, action);
@@ -128,6 +158,11 @@ async function runLinkAction(tab, requestedAccountId) {
     const page = await chrome.tabs.sendMessage(tab.id, { type: "POLY_DUB_GET_PAGE" });
     if (!page?.ok || page.url !== action.sourceUrl) throw new Error("The page changed. Click Poly Dub again on the current market.");
     const body = { account_id: account.id, destination: action.sourceUrl, require_routing: true };
+    if (promptManual) {
+      await showRoutingChoice(tab.id, action, body, accountLabel(account), true);
+      return { ok: true, pending: true };
+    }
+    if (normalizedUs !== undefined) body.us_destination = normalizedUs;
     return await createOrResumeRequest(tab.id, action, body, settings.polyLinksApiKey, accountLabel(account));
   } finally { inFlightActions.delete(tab.id); }
 }
@@ -142,7 +177,7 @@ async function invalidateTabConfirmation(tabId) {
   if (action) action.valid = false;
   await chrome.storage.session.remove(pendingConfirmationKey(tabId));
 }
-async function confirmDefiOnly(requestId, sender) {
+async function confirmChoice(requestId, sender, usDestination, manual = false) {
   const tabId = sender.tab?.id;
   if (!tabId || sender.id !== chrome.runtime.id || sender.frameId !== 0 || !sender.url) throw new Error("This confirmation is no longer valid. Click Poly Dub again.");
   if (inFlightActions.has(tabId)) throw new Error("A link is already being created in this tab.");
@@ -153,14 +188,19 @@ async function confirmDefiOnly(requestId, sender) {
     const key = pendingConfirmationKey(tabId);
     const pending = (await chrome.storage.session.get(key))[key];
     if (!pending || pending.requestId !== requestId || pending.body.destination !== sender.url || sender.tab.url !== sender.url || !supportedUrl(sender.url) || !isDefiUrl(sender.url)) throw new Error("This confirmation is no longer valid. Click Poly Dub again.");
-    await chrome.storage.session.remove(key);
+    const normalizedUs = manual ? normalizeUsDestination(usDestination) : undefined;
+    if (!manual && pending.manualOnly) throw new Error("Enter a US market URL to create this link.");
     const settings = await getSettings();
     const account = await validateActionSettings(settings, pending.body.account_id);
     action.accountId = account.id;
     action.credentialDigest = await digest(settings.polyLinksApiKey);
     if (action.credentialDigest !== pending.credentialDigest) throw new Error("Your API key changed. Click Poly Dub again before confirming.");
     await assertCurrentAction(tabId, action);
-    return await createOrResumeRequest(tabId, action, { ...pending.body, allow_defi_only: true }, settings.polyLinksApiKey, accountLabel(account));
+    const body = { ...pending.body, ...(manual ? { us_destination: normalizedUs } : { allow_defi_only: true }) };
+    if (!manual) await chrome.storage.session.remove(key);
+    const result = await createOrResumeRequest(tabId, action, body, settings.polyLinksApiKey, accountLabel(account));
+    if (manual && result.ok && !result.pending) await chrome.storage.session.remove(key);
+    return result;
   } finally { inFlightActions.delete(tabId); }
 }
 
@@ -171,14 +211,22 @@ async function createOrResumeRequest(tabId, action, body, apiKey, label) {
   try {
     await assertCurrentAction(tabId, action);
     let record = (await chrome.storage.local.get(key))[key];
-    const resumed = Boolean(record);
+    let resumed = Boolean(record);
     if (record) {
       validateSavedRequest(record, body);
       if (record.credentialDigest !== action.credentialDigest) throw new Error(`A previous request for this account and market is tied to another API key. Restore the original key or ask an admin to reconcile it before creating again.${requestReference(record)}`);
-      if (record.state === "completed") return await copyCompletedRequest(tabId, action, key, record, label);
+      const differentTarget = (body.us_destination !== undefined && body.us_destination !== record.body.us_destination) || (body.allow_defi_only === true && record.body.us_destination !== undefined);
+      if (differentTarget) {
+        if (record.state !== "completed" || !validSuccess(record.result, record)) throw new Error(`A previous request for this account and market is still unconfirmed. Check that request before changing its US destination.${requestReference(record)}`);
+        // The previous creation is known to have finished. A deliberate manual
+        // override is a new link, not a replay of the earlier automatic result.
+        record = undefined;
+        resumed = false;
+      } else if (record.state === "completed") return await copyCompletedRequest(tabId, action, key, record, label);
       // A manual retry always replays the saved body, including already accepted
       // DeFi-only consent, rather than silently creating another identity.
-    } else {
+    }
+    if (!record) {
       record = { idempotencyKey: crypto.randomUUID(), body, credentialDigest: action.credentialDigest, state: "pending", createdAt: Date.now() };
       await chrome.storage.local.set({ [key]: record });
     }
@@ -188,6 +236,9 @@ async function createOrResumeRequest(tabId, action, body, apiKey, label) {
 function validateSavedRequest(record, expected) {
   if (!record || !UUID.test(record.idempotencyKey) || !/^[0-9a-f]{64}$/.test(record.credentialDigest) || !["pending", "completed"].includes(record.state) || record.body?.account_id !== expected.account_id || typeof record.body?.destination !== "string" || new URL(record.body.destination).href !== new URL(expected.destination).href || record.body.require_routing !== true || (record.body.allow_defi_only !== undefined && record.body.allow_defi_only !== true)) {
     throw new Error("A saved request for this account and market needs review. Do not clear extension storage or create another link; ask an admin to reconcile it.");
+  }
+  if (record.body.us_destination !== undefined && (record.body.allow_defi_only || !isDefiUrl(record.body.destination) || normalizeUsDestination(record.body.us_destination) !== record.body.us_destination)) {
+    throw new Error("A saved manual request needs review. Ask an admin to reconcile it before creating another link.");
   }
 }
 function requestReference(record) { return ` Request: ${record.requestId || record.idempotencyKey}.`; }
@@ -201,6 +252,7 @@ function validSuccess(data, record) {
   try {
     if (new URL(data.data.destination).href !== new URL(record.body.destination).href) return false;
     if (data.data.routing_mode !== "regional" && !(data.data.routing_mode === "defi_only" && record.body.allow_defi_only === true && isDefiUrl(record.body.destination))) return false;
+    if (record.body.us_destination !== undefined && (data.data.routing_mode !== "regional" || data.data.routing_source !== "manual" || data.data.us_destination !== record.body.us_destination)) return false;
     const link = new URL(data.data.short_link);
     return link.href === data.data.short_link && link.protocol === "https:" && link.hostname === "polymarket.com" && !link.username && !link.password && !link.port && !link.search && !link.hash && /^\/r\/[A-Za-z0-9_-]{1,128}$/.test(link.pathname);
   } catch { return false; }
@@ -228,7 +280,7 @@ async function submitRequest(tabId, action, key, record, apiKey, label, resumed)
   if (receivedId) { record.requestId = receivedId; await chrome.storage.local.set({ [key]: record }); }
   if (status === 201 && validSuccess(data, record)) {
     record.state = "completed";
-    record.result = { request_id: data.request_id, data: { account_id: data.data.account_id, destination: data.data.destination, short_link: data.data.short_link, routing_mode: data.data.routing_mode } };
+    record.result = { request_id: data.request_id, data: { account_id: data.data.account_id, destination: data.data.destination, short_link: data.data.short_link, routing_mode: data.data.routing_mode, ...(record.body.us_destination ? { us_destination: data.data.us_destination, routing_source: data.data.routing_source } : {}) } };
     await chrome.storage.local.set({ [key]: record });
     return await copyCompletedRequest(tabId, action, key, record, label);
   }
@@ -237,16 +289,8 @@ async function submitRequest(tabId, action, key, record, apiKey, label, resumed)
     throw new Error(unknownOutcomeMessage(record));
   }
   await chrome.storage.local.remove(key);
-  if (status === 422 && data?.error?.code === "defi_confirmation_required" && !record.body.allow_defi_only && isDefiUrl(record.body.destination)) {
-    await assertCurrentAction(tabId, action);
-    const confirmationKey = pendingConfirmationKey(tabId), nonce = crypto.randomUUID();
-    try {
-      await chrome.storage.session.set({ [confirmationKey]: { requestId: nonce, body: record.body, credentialDigest: record.credentialDigest } });
-      await assertCurrentAction(tabId, action);
-      const displayed = await chrome.tabs.sendMessage(tabId, { type: "POLY_DUB_CONFIRM_DEFI_ONLY_REQUIRED", requestId: nonce, sourceUrl: action.sourceUrl, accountLabel: label, message: "No verified US destination is available for this market." });
-      if (!displayed?.ok) throw new Error("Could not show the DeFi-only confirmation. Click Poly Dub again.");
-    } catch (error) { await chrome.storage.session.remove(confirmationKey); throw error; }
-    await showBadge("ASK", "#b54708");
+  if (status === 422 && data?.error?.code === "defi_confirmation_required" && !record.body.us_destination && !record.body.allow_defi_only && isDefiUrl(record.body.destination)) {
+    await showRoutingChoice(tabId, action, record.body, label);
     return { ok: true, pending: true };
   }
   if (status === 401) { await chrome.runtime.openOptionsPage(); throw new Error("Your PolyLinks API key is invalid or revoked. Connect an active personal API key in settings."); }
@@ -255,17 +299,33 @@ async function submitRequest(tabId, action, key, record, apiKey, label, resumed)
   const message = typeof data?.error?.message === "string" ? data.error.message.split(apiKey).join("[redacted]").slice(0, 600) : "PolyLinks could not create this link.";
   throw new Error(message);
 }
+async function showRoutingChoice(tabId, action, body, label, manualOnly = false) {
+  await assertCurrentAction(tabId, action);
+  const key = pendingConfirmationKey(tabId), nonce = crypto.randomUUID();
+  try {
+    await chrome.storage.session.set({ [key]: { requestId: nonce, body, credentialDigest: action.credentialDigest, manualOnly } });
+    await assertCurrentAction(tabId, action);
+    const displayed = await chrome.tabs.sendMessage(tabId, {
+      type: manualOnly ? "POLY_DUB_MANUAL_US_REQUIRED" : "POLY_DUB_CONFIRM_DEFI_ONLY_REQUIRED",
+      requestId: nonce, sourceUrl: action.sourceUrl, accountLabel: label,
+      message: manualOnly ? "Choose the US market for this new link." : "No verified US destination is available for this market.",
+    });
+    if (!displayed?.ok) throw new Error("Could not show the routing form. Click Poly Dub again.");
+  } catch (error) { await chrome.storage.session.remove(key); throw error; }
+  await showBadge("ASK", "#b54708");
+}
 async function copyCompletedRequest(tabId, action, key, record, label) {
   if (!validSuccess(record.result, record)) throw new Error(unknownOutcomeMessage(record));
   await assertCurrentAction(tabId, action);
-  const copied = await chrome.tabs.sendMessage(tabId, { type: "POLY_DUB_COPY_LINK", sourceUrl: action.sourceUrl, accountLabel: label, shortLink: record.result.data.short_link, routingMode: record.result.data.routing_mode });
+  const copied = await chrome.tabs.sendMessage(tabId, { type: "POLY_DUB_COPY_LINK", sourceUrl: action.sourceUrl, accountLabel: label, shortLink: record.result.data.short_link, routingMode: record.result.data.routing_mode, ...(record.result.data.routing_source ? { routingSource: record.result.data.routing_source } : {}) });
   if (!copied?.ok) throw new Error(copied?.error || "The link was created but could not be copied. Click Poly Dub again to copy the same link.");
   await chrome.storage.local.remove(key);
   await showBadge("OK", "#039855");
   return { ok: true, routingMode: record.result.data.routing_mode };
 }
-async function handleActionError(tab, error) {
+async function handleActionError(tab, error, preserveDraft = false) {
   await showBadge("ERR", "#d92d20");
+  if (preserveDraft) return; // The bound form displays this error without losing its draft.
   if (!tab?.id || !supportedUrl(tab.url)) return;
   try {
     await chrome.scripting.executeScript({ files: ["content-script.js"], target: { tabId: tab.id } });

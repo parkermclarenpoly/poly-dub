@@ -15,7 +15,7 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 async function until(predicate) { for (let i = 0; i < 100; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 1)); } assert.ok(predicate(), 'expected asynchronous operation to begin'); }
 const response = (status, body, streamed = true) => ({ status: streamed ? 200 : status, json: async () => ({ ...(streamed ? { status } : {}), ...body }) });
-const success = (body, overrides = {}) => response(201, { request_id: requestId, data: { account_id: body.account_id, destination: new URL(body.destination).href, short_link: 'https://polymarket.com/r/verified', routing_mode: body.allow_defi_only ? 'defi_only' : 'regional', ...overrides } });
+const success = (body, overrides = {}) => response(201, { request_id: requestId, data: { account_id: body.account_id, destination: new URL(body.destination).href, short_link: 'https://polymarket.com/r/verified', routing_mode: body.allow_defi_only ? 'defi_only' : 'regional', ...(body.us_destination ? { us_destination: body.us_destination, routing_source: 'manual' } : {}), ...overrides } });
 const confirmation = () => response(422, { error: { code: 'defi_confirmation_required', message: 'No verified US mapping is available.', request_id: requestId } });
 
 function backgroundHarness({ url = sourceUrl, responses = [], fetchImpl, state = {}, tabId = 17, storageFailure = false, copyFailure = false, accessFailure = false } = {}) {
@@ -52,7 +52,10 @@ function backgroundHarness({ url = sourceUrl, responses = [], fetchImpl, state =
   const send = (message, sender = { id: 'extension-id', url: 'chrome-extension://extension-id/popup.html' }) => new Promise((resolve, reject) => { try { if (listeners.message(message, sender, resolve) !== true) resolve(undefined); } catch (error) { reject(error); } });
   return { state, tab, tabs, settings, requests, messages, badges, listeners, intervals, menus, popups, context, send,
     intervalStarts: () => intervalStarts, platformCalls: () => platformCalls, optionsOpened: () => optionsOpened, trustedStorage: () => trustedStorage,
-    create: (id = accountId, target = tab.id) => send({ type: 'POLY_DUB_CREATE_WITH_ACCOUNT', tabId: target, accountId: id }),
+    create: (id = accountId, target = tab.id, usDestination) => send({ type: 'POLY_DUB_CREATE_WITH_ACCOUNT', tabId: target, accountId: id, ...(usDestination === undefined ? {} : { usDestination, sourceUrl: tabs[target].url }) }),
+    openManual: () => listeners.menu({ menuItemId: 'poly-dub-manual-us' }, tab),
+    manual: (nonce, usDestination, sender = { id: 'extension-id', frameId: 0, tab: { id: tab.id, url: tab.url }, url: tab.url }) => send({ type: 'POLY_DUB_CONFIRM_MANUAL_US', requestId: nonce, usDestination }, sender),
+    manualPanel: () => messages.findLast(message => message.type === 'POLY_DUB_MANUAL_US_REQUIRED'),
     confirm: (nonce, sender = { id: 'extension-id', frameId: 0, tab: { id: tab.id, url: tab.url }, url: tab.url }) => send({ type: 'POLY_DUB_CONFIRM_DEFI_ONLY', requestId: nonce }, sender),
     pending: () => messages.findLast(message => message.type === 'POLY_DUB_CONFIRM_DEFI_ONLY_REQUIRED'),
     records: () => Object.entries(settings).filter(([key]) => key.startsWith('poly-dub-request:')).map(([, value]) => value),
@@ -111,9 +114,9 @@ test('UI settings reads also fail closed when trusted storage protection fails',
 });
 test('ask mode sets the account popup while default mode offers alternate account menus', async () => {
   const h = backgroundHarness(); await h.context.syncExtensionUi();
-  assert.equal(h.popups.at(-1), ''); assert.equal(h.menus.length, 1); assert.match(h.menus[0].title, /@Other/);
+  assert.equal(h.popups.at(-1), ''); assert.equal(h.menus.length, 2); assert.ok(h.menus.some(menu => /@Other/.test(menu.title))); assert.ok(h.menus.some(menu => menu.id === 'poly-dub-manual-us'));
   h.settings.accountSelectionMode = 'ask'; await h.context.syncExtensionUi();
-  assert.equal(h.popups.at(-1), 'popup.html'); assert.equal(h.menus.length, 0);
+  assert.equal(h.popups.at(-1), 'popup.html'); assert.equal(h.menus.length, 0, 'ask mode keeps every creation in the account picker');
 });
 
 for (const [name, override] of [ ['wrong account', { account_id: otherAccountId }], ['wrong destination', { destination: 'https://polymarket.com/event/other' }], ['missing routing', { routing_mode: undefined }], ['unconsented fallback', { routing_mode: 'defi_only' }], ['external short URL', { short_link: 'https://evil.example/r/x' }], ['credential short URL', { short_link: 'https://user@polymarket.com/r/x' }], ['port short URL', { short_link: 'https://polymarket.com:8443/r/x' }], ['fragment short URL', { short_link: 'https://polymarket.com/r/x#wrong' }], ['nonredirect short URL', { short_link: 'https://polymarket.com/event/x' }] ]) {
@@ -219,7 +222,7 @@ for (const outcome of ['success', 'confirmation', 'malformed JSON', 'network fai
 function documentHarness() {
   const nodes = [];
   class Element {
-    constructor(tag) { this.tagName = tag; this.children = []; this.style = {}; this.handlers = {}; this.disabled = false; this.textContent = ''; nodes.push(this); }
+    constructor(tag) { this.tagName = tag; this.children = []; this.style = {}; this.handlers = {}; this.disabled = false; this.value = ''; this.textContent = ''; nodes.push(this); }
     append(...children) { this.children.push(...children); } appendChild(child) { this.append(child); return child; } remove() { this.removed = true; }
     addEventListener(event, fn) { this.handlers[event] = fn; } attachShadow() { this.shadow = new Element('shadow'); return this.shadow; }
     async click(trusted = true) { return this.handlers.click?.({ isTrusted: trusted, preventDefault() {}, stopPropagation() {} }); }
@@ -227,9 +230,9 @@ function documentHarness() {
   const document = { createElement: tag => new Element(tag), getElementById: id => nodes.find(node => node.id === id && !node.removed), querySelector: () => null, title: 'Example', execCommand: () => true };
   document.documentElement = new Element('html'); document.body = new Element('body'); return { document, nodes, Element };
 }
-function contentHarness() {
+function contentHarness({ sendImpl } = {}) {
   const dom = documentHarness(), sent = [], copied = []; let handler; const location = { href: sourceUrl };
-  const chrome = { runtime: { onMessage: { addListener(fn) { handler = fn; } }, sendMessage: async message => { sent.push(message); return { ok: true }; } } };
+  const chrome = { runtime: { onMessage: { addListener(fn) { handler = fn; } }, sendMessage: async message => { sent.push(message); return sendImpl ? sendImpl(message) : { ok: true }; } } };
   vm.runInNewContext(read('content-script.js'), { ...dom, chrome, location, window: {}, URL, navigator: { clipboard: { writeText: async text => copied.push(text) } }, setTimeout: () => 1 });
   const send = message => new Promise(resolve => { if (handler(message, {}, resolve) !== true) resolve(undefined); });
   return { ...dom, sent, copied, location, send, confirmationButton: () => dom.nodes.findLast(node => node.tagName === 'button' && /DeFi-only/.test(node.textContent)) };
@@ -244,4 +247,119 @@ test('content refuses to copy or confirm after client-side navigation', async ()
 });
 for (const [routingMode, expected] of [['regional', /regional/i], ['defi_only', /DeFi.only/i]]) {
   test(`copy success names its account and ${routingMode} routing`, async () => { const h = contentHarness(); await h.send({ type: 'POLY_DUB_COPY_LINK', sourceUrl, shortLink: 'https://polymarket.com/r/x', accountLabel: '@Creator (x)', routingMode }); assert.deepEqual(h.copied, ['https://polymarket.com/r/x']); assert.match(h.document.getElementById('poly-dub-toast').textContent, expected); assert.match(h.document.getElementById('poly-dub-toast').textContent, /@Creator/); });
+}
+
+
+const manualUsUrl = 'https://www.polymarket.us/events/correct-market/child?market=7';
+test('manual popup creation retains the exact DeFi source and selected account while normalizing its US target', async () => {
+  const h = backgroundHarness();
+  assert.equal((await h.create(otherAccountId, 17, '  HTTPS://WWW.POLYMARKET.US/events/correct-market/child?market=7  '))?.ok, true);
+  assert.deepEqual(h.requests[0].body, { account_id: otherAccountId, destination: sourceUrl, require_routing: true, us_destination: manualUsUrl });
+  assert.equal(h.messages.at(-1).routingSource, 'manual');
+  assert.equal(JSON.stringify(h.messages).includes(apiKey), false);
+});
+for (const usUrl of ['https://polymarket.us/event/right', 'https://polymarket.us/events/right', 'https://polymarket.us/sports/nba/team-a-team-b', 'https://polymarket.us/events/x/y/z/', 'https://polymarket.us/event/right/']) {
+  test(`manual creation accepts a supported US market path: ${usUrl}`, async () => {
+    const h = backgroundHarness(); assert.equal((await h.create(accountId, 17, usUrl))?.ok, true); assert.equal(h.requests[0]?.body.us_destination, usUrl);
+  });
+}
+for (const usUrl of ['', 'https://polymarket.us/', 'https://polymarket.us/sports/nba', 'https://polymarket.us/events/x//y', 'https://polymarket.us/event/x/../right', 'https://polymarket.us/event/%78', 'https://polymarket.us/sports/nba/hub', 'https://polymarket.us/sports/nba/HUB', 'http://polymarket.us/event/x', 'https://fake.polymarket.us/event/x', 'https://polymarket.us.evil.test/event/x', 'https://user@polymarket.us/event/x', 'https://polymarket.us:443/event/x', 'https://polymarket.us:8443/event/x', 'https://%70olymarket.us/event/x', 'https://polymarket.us/event/x#', 'https://polymarket.us/event/x#outcome', 'https://polymarket.us/event/white space', 'https://polymarket.us/ev\nent/x', 'https://polymarket.us\\event\\x']) {
+  test(`invalid manual US target cannot create any link: ${JSON.stringify(usUrl)}`, async () => {
+    const h = backgroundHarness(); assert.equal((await h.create(accountId, 17, usUrl))?.ok, false); assert.equal(h.requests.length, 0);
+  });
+}
+test('manual US target is rejected on a US source', async () => {
+  const h = backgroundHarness({ url: 'https://polymarket.us/event/already-us' }); assert.equal((await h.create(accountId, 17, manualUsUrl))?.ok, false); assert.equal(h.requests.length, 0);
+});
+test('manual popup drafts cannot move to a navigated source', async () => {
+  const h = backgroundHarness(); const result = await h.send({ type: 'POLY_DUB_CREATE_WITH_ACCOUNT', tabId: 17, accountId, usDestination: manualUsUrl, sourceUrl: 'https://polymarket.com/event/previous' });
+  assert.equal(result?.ok, false); assert.equal(h.requests.length, 0);
+});
+test('manual menu opens a bound US-link form before creating, including when automatic matching would succeed', async () => {
+  const h = backgroundHarness(); await h.openManual(); assert.equal(h.requests.length, 0); const panel = h.manualPanel(); assert.ok(panel); assert.equal(panel.sourceUrl, sourceUrl); assert.equal(panel.accountLabel, '@Creator (x)');
+  assert.equal((await h.manual(panel.requestId, manualUsUrl))?.ok, true); assert.equal(h.requests.length, 1); assert.equal(h.requests[0].body.us_destination, manualUsUrl);
+  assert.equal((await h.manual(panel.requestId, manualUsUrl))?.ok, false); assert.equal(h.requests.length, 1);
+});
+test('no-match panel accepts a US URL instead of DeFi-only consent', async () => {
+  const h = backgroundHarness({ responses: [confirmation()] }); await h.create(otherAccountId); assert.equal((await h.manual(h.pending().requestId, manualUsUrl))?.ok, true);
+  assert.deepEqual(h.requests[1].body, { account_id: otherAccountId, destination: sourceUrl, require_routing: true, us_destination: manualUsUrl });
+  assert.notEqual(h.requests[1].headers['Idempotency-Key'], h.requests[0].headers['Idempotency-Key']);
+});
+for (const invalidation of ['wrong nonce', 'foreign extension', 'subframe', 'navigation', 'key changed', 'account removed', 'settings changed and restored', 'tab removed']) {
+  test(`manual form fails closed after ${invalidation}`, async () => {
+    const h = backgroundHarness({ responses: [confirmation()] }); await h.create(); const before = h.requests.length; let nonce = h.pending().requestId; let sender = { id: 'extension-id', frameId: 0, tab: h.tab, url: sourceUrl };
+    if (invalidation === 'wrong nonce') nonce = randomUUID();
+    if (invalidation === 'foreign extension') sender.id = 'other-extension';
+    if (invalidation === 'subframe') sender.frameId = 1;
+    if (invalidation === 'navigation') h.tab.url = 'https://polymarket.com/event/new';
+    if (invalidation === 'key changed') h.settings.polyLinksApiKey = 'plk_changed';
+    if (invalidation === 'account removed') h.settings.polyLinksAccounts = [];
+    if (invalidation === 'settings changed and restored') await h.listeners.storage({ defaultAccountId: {} }, 'local');
+    if (invalidation === 'tab removed') await h.listeners.removed(17);
+    assert.equal((await h.manual(nonce, manualUsUrl, sender))?.ok, false); assert.equal(h.requests.length, before);
+  });
+}
+test('validation failures retain the bound manual form so its target can be corrected', async () => {
+  const h = backgroundHarness({ responses: [confirmation(), response(400, { error: { code: 'invalid_us_destination', message: 'Choose a market page.' } })] }); await h.create(); const nonce = h.pending().requestId;
+  assert.equal((await h.manual(nonce, 'https://polymarket.us/'))?.ok, false); assert.equal(h.requests.length, 1);
+  assert.equal((await h.manual(nonce, manualUsUrl))?.ok, false); assert.equal(h.requests.length, 2); assert.equal(h.records().length, 0);
+  assert.equal((await h.manual(nonce, manualUsUrl))?.ok, true); assert.equal(h.requests.length, 3);
+});
+test('an unknown manual write retries its exact saved key and full body after restart', async () => {
+  const first = backgroundHarness({ fetchImpl: async () => { throw new Error('lost'); } }); await first.create(accountId, 17, manualUsUrl);
+  assert.equal(first.records().length, 1); assert.equal(first.records()[0].body.us_destination, manualUsUrl);
+  first.state.session = {}; const resumed = backgroundHarness({ state: first.state }); assert.equal((await resumed.create())?.ok, true);
+  assert.equal(resumed.requests[0].headers['Idempotency-Key'], first.requests[0].headers['Idempotency-Key']); assert.deepEqual(resumed.requests[0].body, first.requests[0].body);
+});
+for (const previousTarget of [undefined, manualUsUrl]) {
+  test(`an unresolved ${previousTarget ? 'manual' : 'automatic'} write blocks a different manual target without replaying the wrong result`, async () => {
+    const first = backgroundHarness({ fetchImpl: async () => { throw new Error('lost'); } }); await first.create(accountId, 17, previousTarget); const record = clone(first.records()[0]);
+    const resumed = backgroundHarness({ state: first.state }); const result = await resumed.create(accountId, 17, 'https://polymarket.us/event/different');
+    assert.equal(result?.ok, false); assert.match(result.error, /previous|pending|unknown|unconfirmed/i); assert.equal(resumed.requests.length, 0); assert.deepEqual(resumed.records()[0], record);
+  });
+}
+test('a completed automatic result permits an explicit new manual target after clipboard failure', async () => {
+  const first = backgroundHarness({ copyFailure: true }); await first.create(); assert.equal(first.records()[0].state, 'completed'); const resumed = backgroundHarness({ state: first.state });
+  assert.equal((await resumed.create(accountId, 17, manualUsUrl))?.ok, true); assert.equal(resumed.requests.length, 1); assert.equal(resumed.requests[0].body.us_destination, manualUsUrl); assert.notEqual(resumed.requests[0].headers['Idempotency-Key'], first.requests[0].headers['Idempotency-Key']);
+});
+for (const [name, override] of [['missing target', { us_destination: undefined }], ['different target', { us_destination: 'https://polymarket.us/event/wrong' }], ['automatic source', { routing_source: 'verified' }], ['missing source', { routing_source: undefined }], ['DeFi downgrade', { routing_mode: 'defi_only' }]]) {
+  test(`manual success rejects ${name} and keeps its request recoverable`, async () => {
+    const h = backgroundHarness({ fetchImpl: request => success(request.body, override) }); assert.equal((await h.create(accountId, 17, manualUsUrl))?.ok, false); assert.equal(h.records().length, 1); assert.equal(h.messages.some(message => message.type === 'POLY_DUB_COPY_LINK'), false);
+  });
+}
+test('manual no-match failure never offers a DeFi downgrade', async () => {
+  const h = backgroundHarness({ responses: [confirmation()] }); assert.equal((await h.create(accountId, 17, manualUsUrl))?.ok, false); assert.equal(h.pending(), undefined); assert.equal(h.requests.length, 1);
+});
+test('manual completed result preserves provenance and copies on retry without another write', async () => {
+  const first = backgroundHarness({ copyFailure: true }); await first.create(accountId, 17, manualUsUrl); const resumed = backgroundHarness({ state: first.state }); assert.equal((await resumed.create(accountId, 17, manualUsUrl))?.ok, true); assert.equal(resumed.requests.length, 0); assert.equal(resumed.messages.at(-1).routingSource, 'manual');
+});
+for (const type of ['POLY_DUB_CONFIRM_DEFI_ONLY_REQUIRED', 'POLY_DUB_MANUAL_US_REQUIRED']) {
+  test(`manual UI in ${type} requires trusted submission and retains a rejected draft`, async () => {
+    const h = contentHarness({ sendImpl: async () => ({ ok: false, error: 'Enter a valid US market URL.' }) }); await h.send({ type, requestId: 'opaque', sourceUrl, accountLabel: '@Creator (x)' });
+    const input = h.nodes.findLast(node => node.tagName === 'input'); const button = h.nodes.findLast(node => node.tagName === 'button' && /US link/.test(node.textContent)); assert.ok(input); assert.ok(button); input.value = 'https://polymarket.us/';
+    await button.click(false); assert.equal(h.sent.length, 0); await button.click(true); assert.deepEqual(clone(h.sent), [{ type: 'POLY_DUB_CONFIRM_MANUAL_US', requestId: 'opaque', usDestination: 'https://polymarket.us/' }]);
+    assert.equal(input.value, 'https://polymarket.us/'); assert.equal(button.disabled, false); assert.ok(h.nodes.some(node => /Enter a valid US/.test(node.textContent))); input.value = manualUsUrl; await button.click(); assert.equal(h.sent.length, 2);
+  });
+}
+test('manual UI cannot submit after navigation', async () => {
+  const h = contentHarness(); await h.send({ type: 'POLY_DUB_MANUAL_US_REQUIRED', requestId: 'opaque', sourceUrl, accountLabel: '@Creator (x)' }); const button = h.nodes.findLast(node => node.tagName === 'button' && /US link/.test(node.textContent)); assert.ok(button); h.location.href = 'https://polymarket.com/event/new'; await button.click(); assert.equal(h.sent.length, 0);
+});
+test('manual UI blocks a second submission while the first is pending', async () => {
+  let release; const h = contentHarness({ sendImpl: () => new Promise(resolve => { release = resolve; }) }); await h.send({ type: 'POLY_DUB_MANUAL_US_REQUIRED', requestId: 'opaque', sourceUrl, accountLabel: '@Creator (x)' }); const button = h.nodes.findLast(node => node.tagName === 'button' && /US link/.test(node.textContent)); assert.ok(button);
+  const first = button.click(); await button.click(); assert.equal(h.sent.length, 1); release({ ok: true }); await first;
+});
+
+
+test('DeFi-only consent cannot change or silently replay an unresolved manual write', async () => {
+  const h = backgroundHarness({ fetchImpl: async () => h.requests.length === 1 ? confirmation() : Promise.reject(new Error('lost')) });
+  await h.create(); const nonce = h.pending().requestId; assert.equal((await h.manual(nonce, manualUsUrl))?.ok, false); const saved = clone(h.records()[0]);
+  assert.equal((await h.confirm(nonce))?.ok, false); assert.equal(h.requests.length, 2); assert.deepEqual(h.records()[0], saved);
+});
+
+for (const [length, accepted] of [[8192, true], [8193, false]]) {
+  test(`manual URL length ${length} is ${accepted ? 'accepted' : 'rejected before HTTP'}`, async () => {
+    const prefix = 'https://polymarket.us/event/right?selector=';
+    const target = prefix + 'x'.repeat(length - prefix.length);
+    const h = backgroundHarness(); assert.equal((await h.create(accountId, 17, target))?.ok, accepted); assert.equal(h.requests.length, accepted ? 1 : 0);
+  });
 }

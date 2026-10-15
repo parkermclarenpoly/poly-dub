@@ -19,3 +19,10 @@ footer { min-height: 48px; display: flex; align-items: center; justify-content: 
 #status { min-width: 0; color: #667085; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 #openSettings { flex: 0 0 auto; min-height: 28px; padding: 4px 0; border: 0; background: transparent; color: #175cd3; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 700; }
 #openSettings:focus-visible { outline: 2px solid #175cd3; outline-offset: 3px; border-radius: 2px; }
+
+.us-destination { padding: 14px 14px 0; }
+.us-destination label { display: block; font-size: 12px; font-weight: 600; }
+.us-destination label span { font-weight: 400; color: #667085; }
+.us-destination input { width: 100%; margin-top: 6px; padding: 9px; border: 1px solid #98a2b3; border-radius: 5px; font: inherit; font-size: 12px; }
+.us-destination input:focus-visible { outline: 2px solid #175cd3; outline-offset: 2px; }
+.us-destination p { margin-top: 6px; color: #667085; font-size: 11px; line-height: 1.5; }
