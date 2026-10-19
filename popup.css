@@ -1,28 +1,35 @@
 :root { color-scheme: light; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #101828; }
 * { box-sizing: border-box; }
-body { width: 320px; margin: 0; background: #f5f7fb; }
-header { display: flex; align-items: center; gap: 10px; padding: 16px; background: #175cd3; color: #fff; }
-header img { flex: 0 0 28px; }
+body { width: 340px; max-height: 560px; margin: 0; overflow-y: auto; background: #fff; }
 h1, p { margin: 0; }
+header { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border-bottom: 1px solid #e4e7ec; }
+header img { flex: 0 0 28px; }
 h1 { font-size: 15px; line-height: 1.2; }
-header p { margin-top: 3px; color: #dbe9ff; font-size: 11px; }
-main { display: grid; gap: 8px; padding: 14px; max-height: 420px; overflow-y: auto; }
-.account-button { position: relative; width: 100%; min-height: 60px; padding: 10px 11px; border: 1px solid #d0d5dd; border-radius: 7px; background: #fff; color: #101828; cursor: pointer; font-family: inherit; overflow-wrap: anywhere; text-align: left; }
-.account-button strong { display: block; font-size: 13px; line-height: 1.4; }
-.account-platform { display: block; margin-top: 4px; color: #667085; font-size: 11px; line-height: 1.4; }
-.account-button:hover, .account-button:focus-visible { border-color: #175cd3; outline: 3px solid rgba(23, 92, 211, 0.12); }
-.account-button.default { border-color: #a9c7f5; padding-right: 65px; }
-.account-button.default::after { content: "Default"; position: absolute; top: 13px; right: 10px; color: #175cd3; font-size: 10px; font-weight: 600; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.picker-controls { padding: 12px 14px 8px; }
+#accountSearch { width: 100%; min-height: 36px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #101828; font: inherit; font-size: 12px; }
+#accountSearch:focus-visible, #usDestination:focus-visible { outline: 2px solid #175cd3; outline-offset: 2px; }
+.us-destination { margin-top: 8px; }
+.us-destination summary { width: fit-content; color: #175cd3; cursor: pointer; font-size: 11px; font-weight: 600; }
+.us-destination summary span { margin-left: 3px; color: #667085; font-weight: 400; }
+.us-destination-fields { padding: 10px 0 2px; }
+.us-destination label { display: block; font-size: 11px; font-weight: 600; }
+#usDestination { width: 100%; min-height: 36px; margin-top: 5px; padding: 7px 9px; border: 1px solid #98a2b3; border-radius: 6px; font: inherit; font-size: 12px; }
+.us-destination p { margin-top: 5px; color: #667085; font-size: 11px; line-height: 1.4; }
+main { padding: 0 14px 12px; }
+.account-button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 4px; padding: 8px 10px; border: 1px solid #e4e7ec; border-radius: 6px; background: #fff; color: #101828; cursor: pointer; font-family: inherit; text-align: left; }
+.account-identity { flex: 1 1 auto; min-width: 0; }
+.account-button strong { display: block; font-size: 12px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.account-category { display: block; margin-top: 2px; color: #667085; font-size: 10px; line-height: 1.3; overflow-wrap: anywhere; }
+.account-platform { flex: 0 0 auto; color: #667085; font-size: 11px; }
+.account-button.default::after { content: "Default"; flex: 0 0 auto; padding: 2px 5px; border-radius: 4px; background: #edf4ff; color: #175cd3; font-size: 9px; font-weight: 600; }
+.account-button:hover { background: #f5f8ff; }
+.account-button:focus-visible { position: relative; z-index: 1; outline: 2px solid #175cd3; outline-offset: -2px; }
 .account-button:disabled { cursor: wait; opacity: 0.6; }
-.account-button.creating { border-color: #175cd3; background: #edf4ff; opacity: 1; }
-footer { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-top: 1px solid #e4e7ec; background: #fff; }
-#status { min-width: 0; color: #667085; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.account-button.creating { background: #edf4ff; opacity: 1; }
+.account-button[hidden], #noAccountResults[hidden], #accountSearchArea[hidden], #pickerControls[hidden], #usDestinationPanel[hidden] { display: none; }
+#noAccountResults { padding: 12px 14px 20px; color: #667085; font-size: 12px; text-align: center; }
+footer { position: sticky; bottom: 0; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; border-top: 1px solid #e4e7ec; background: #fff; }
+#status { min-width: 0; color: #667085; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
 #openSettings { flex: 0 0 auto; min-height: 28px; padding: 4px 0; border: 0; background: transparent; color: #175cd3; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 700; }
 #openSettings:focus-visible { outline: 2px solid #175cd3; outline-offset: 3px; border-radius: 2px; }
-
-.us-destination { padding: 14px 14px 0; }
-.us-destination label { display: block; font-size: 12px; font-weight: 600; }
-.us-destination label span { font-weight: 400; color: #667085; }
-.us-destination input { width: 100%; margin-top: 6px; padding: 9px; border: 1px solid #98a2b3; border-radius: 5px; font: inherit; font-size: 12px; }
-.us-destination input:focus-visible { outline: 2px solid #175cd3; outline-offset: 2px; }
-.us-destination p { margin-top: 6px; color: #667085; font-size: 11px; line-height: 1.5; }

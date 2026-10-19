@@ -1,13 +1,20 @@
 const accountButtons = document.getElementById("accountButtons");
 const status = document.getElementById("status");
 const usDestination = document.getElementById("usDestination");
+const usDestinationPanel = document.getElementById("usDestinationPanel");
+const accountSearch = document.getElementById("accountSearch");
+const pickerControls = document.getElementById("pickerControls");
+const accountSearchArea = document.getElementById("accountSearchArea");
+const noAccountResults = document.getElementById("noAccountResults");
 const openSettingsButton = document.getElementById("openSettings");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 let creating = false;
 let draftTab;
+const accountChoices = [];
 
 loadAccounts();
 openSettingsButton.addEventListener("click", () => chrome.runtime.openOptionsPage());
+accountSearch.addEventListener("input", filterAccounts);
 
 async function loadAccounts() {
   try {
@@ -19,22 +26,51 @@ async function loadAccounts() {
       status.textContent = "Connect your PolyLinks account in Settings.";
       return;
     }
+    pickerControls.hidden = false;
+    accountSearchArea.hidden = false;
+    try {
+      const source = new URL(draftTab?.url);
+      usDestinationPanel.hidden = source.protocol !== "https:" || !["polymarket.com", "www.polymarket.com"].includes(source.hostname);
+    } catch {
+      usDestinationPanel.hidden = true;
+    }
     for (const account of accounts) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = `account-button${account.id === settings.defaultAccountId ? " default" : ""}`;
+      const identity = document.createElement("span");
+      identity.className = "account-identity";
       const name = document.createElement("strong");
       name.textContent = account.username;
+      identity.append(name);
+      if (account.category?.name) {
+        const category = document.createElement("span");
+        category.className = "account-category";
+        category.textContent = account.category.name;
+        identity.append(category);
+      }
       const detail = document.createElement("span");
       detail.className = "account-platform";
-      detail.textContent = account.category?.name ? `${account.platform} · ${account.category.name}` : account.platform;
-      button.append(name, detail);
+      detail.textContent = account.platform;
+      button.append(identity, detail);
       button.addEventListener("click", () => createLink(account, button));
       accountButtons.append(button);
+      accountChoices.push({ account, button });
     }
   } catch {
     status.textContent = "Could not load accounts. Reopen Settings and try again.";
   }
+}
+
+function filterAccounts() {
+  const query = accountSearch.value.trim().toLowerCase();
+  let visible = 0;
+  for (const { account, button } of accountChoices) {
+    const label = `${account.username} ${account.platform} ${account.category?.name || ""}`.toLowerCase();
+    button.hidden = !label.includes(query);
+    if (!button.hidden) visible++;
+  }
+  noAccountResults.hidden = visible > 0 || accountChoices.length === 0;
 }
 
 async function createLink(account, selectedButton) {
@@ -78,5 +114,6 @@ async function createLink(account, selectedButton) {
 
 function setButtonsDisabled(disabled) {
   usDestination.disabled = disabled;
+  accountSearch.disabled = disabled;
   for (const button of accountButtons.querySelectorAll("button")) button.disabled = disabled;
 }

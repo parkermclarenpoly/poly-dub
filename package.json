@@ -1,6 +1,6 @@
 {
   "name": "poly-dub",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "private": true,
   "scripts": {
     "package:extension": "node scripts/package-release.js",
