@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Poly Dub",
   "description": "Create and copy an account-owned PolyLinks link with automatic or manually selected US routing.",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "minimum_chrome_version": "110",
   "action": {
     "default_title": "Create Dub link"

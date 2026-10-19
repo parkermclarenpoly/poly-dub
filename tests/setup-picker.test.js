@@ -200,6 +200,50 @@ test('the account picker sends only a selected account ID and tab ID to the work
   assert.match(h.element('status').textContent, /copied/i);
 });
 
+test('account search filters by handle and platform, then restores every choice when cleared', async () => {
+  const h = harness('popup.js', { settings: readySettings });
+  await flush();
+  const search = h.element('accountSearch');
+  search.value = 'instagram';
+  await search.trigger('input');
+  assert.deepEqual(h.popupButtons().map((button) => button.hidden), [true, false]);
+  search.value = '@POLYMARKET';
+  await search.trigger('input');
+  assert.deepEqual(h.popupButtons().map((button) => button.hidden), [false, false]);
+  search.value = 'missing account';
+  await search.trigger('input');
+  assert.deepEqual(h.popupButtons().map((button) => button.hidden), [true, true]);
+  assert.equal(h.element('noAccountResults').hidden, false);
+  search.value = '';
+  await search.trigger('input');
+  assert.deepEqual(h.popupButtons().map((button) => button.hidden), [false, false]);
+  assert.equal(h.element('noAccountResults').hidden, true);
+});
+
+test('manual US destination appears only when choosing an account from a DeFi page', async () => {
+  const defi = harness('popup.js', { settings: readySettings, tabs: [{ id: 17, url: 'https://polymarket.com/event/market' }] });
+  const us = harness('popup.js', { settings: readySettings, tabs: [{ id: 17, url: 'https://polymarket.us/event/market' }] });
+  await flush();
+  assert.equal(defi.element('usDestinationPanel').hidden, false);
+  assert.equal(us.element('usDestinationPanel').hidden, true);
+});
+
+test('account rows distinguish the same handle and platform by category', async () => {
+  const sameLabels = [
+    { ...accounts[0], category: { id: 'sports', name: 'Sports' } },
+    { ...accounts[1], platform: 'X', category: { id: 'esports', name: 'Esports' } },
+  ];
+  const h = harness('popup.js', { settings: { ...readySettings, polyLinksAccounts: sameLabels } });
+  await flush();
+  const text = (node) => [node.textContent, ...node.children.flatMap(text)].join(' ');
+  const labels = h.popupButtons().map(text);
+  assert.match(labels[0], /Sports/);
+  assert.match(labels[1], /Esports/);
+  assert.notEqual(labels[0], labels[1]);
+  await h.popupButtons()[1].click();
+  assert.equal(h.messages[0].accountId, SECOND);
+});
+
 for (const [response, expected] of [[{ ok: true, pending: true }, /confirm|DeFi-only/i], [{ ok: true, pending: true, inProgress: true }, /already|creating/i]]) {
   test('a pending account action stays open and never announces a copied link', async () => {
     const h = harness('popup.js', { settings: readySettings, response });

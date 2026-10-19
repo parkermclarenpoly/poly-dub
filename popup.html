@@ -9,17 +9,24 @@
   <body>
     <header>
       <img src="icons/icon-32.png" width="28" height="28" alt="">
-      <div>
-        <h1>Choose account</h1>
-        <p>Poly Dub · PolyLinks</p>
-      </div>
+      <h1>Choose account</h1>
     </header>
-    <section class="us-destination">
-      <label for="usDestination">US market URL <span>(optional)</span></label>
-      <input id="usDestination" type="url" placeholder="https://polymarket.us/event/market-name" autocomplete="off" aria-describedby="usDestinationHelp">
-      <p id="usDestinationHelp">On a DeFi page, use this US destination for the new link. Leave blank for automatic matching.</p>
-    </section>
+    <div id="pickerControls" class="picker-controls" hidden>
+      <div id="accountSearchArea" hidden>
+        <label class="visually-hidden" for="accountSearch">Search accounts</label>
+        <input id="accountSearch" type="search" placeholder="Search accounts" autocomplete="off">
+      </div>
+      <details id="usDestinationPanel" class="us-destination" hidden>
+        <summary>Add US destination <span>Optional</span></summary>
+        <div class="us-destination-fields">
+          <label for="usDestination">US market URL</label>
+          <input id="usDestination" type="url" placeholder="https://polymarket.us/event/..." autocomplete="off" aria-describedby="usDestinationHelp">
+          <p id="usDestinationHelp">For a DeFi page, override automatic matching for this link.</p>
+        </div>
+      </details>
+    </div>
     <main id="accountButtons" aria-label="Your PolyLinks accounts"></main>
+    <p id="noAccountResults" role="status" hidden>No matching accounts.</p>
     <footer>
       <span id="status" role="status" aria-live="polite" aria-atomic="true"></span>
       <button id="openSettings" type="button">Settings</button>
